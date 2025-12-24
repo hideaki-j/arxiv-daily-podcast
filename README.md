@@ -20,12 +20,16 @@ uv venv && uv sync
 
 # 4. Run
 uv run -m ir_arxiv_ranker --config my_config/config.yaml
+
+# 5. (Optional) Setup GitHub Actions for automatic daily runs
+# See "GitHub Actions schedule" section below
 ```
+## Setup Daily Newsletter & Podcast with GitHub Actions
 
-## GitHub Actions schedule
-
-To run the newsletter automatically on GitHub, use the workflow in `.github/workflows/arxiv-newsletter.yml`. Add repo secrets `OPENAI_API_KEY`, `GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD` (if `email_enabled: true`). Push to GitHub; the job runs on the schedule and can also be started from the Actions tab. Edit the `cron` in the workflow to change timing (GitHub uses UTC). The current schedule runs weekdays at 13:00 UTC.
-
+1. Push this repo to GitHub (or fork it).
+2. Go to Settings -> Secrets and variables -> Actions, then add `OPENAI_API_KEY`, `GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD`.
+3. Edit the `cron` in `.github/workflows/arxiv-newsletter.yml` for your desired time (GitHub uses UTC).
+4. Open Actions -> ArXiv Newsletter -> Run workflow, or wait for the schedule; check logs if it fails.
 ## Configuration essentials
 
 Edit `my_config/config.yaml` to control the run:
