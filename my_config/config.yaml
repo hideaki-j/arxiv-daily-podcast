@@ -1,0 +1,21 @@
+email_enabled: true
+generate_transcript: true
+use_tts: true
+
+ranking_model: gpt-5-2025-08-07
+podcast_model: gpt-5-2025-08-07
+tts_model: gpt-4o-mini-tts-2025-03-20
+tts_voice: marin
+tts_instructions_path: prompt/tts_instructions.txt
+compress_to_64kbps: true
+pricing_path: my_config/pricing.json
+ir_limit: 50
+nlp_limit: 50
+others_limit: 50
+keywords_path: my_config/keywords.yaml
+top_n: 5
+top_n_tts: 5
+abst_word_cutoff: 200
+transcript_word_cutoff: 1000
+arxiv_timeout: 30
+openai_timeout: 180

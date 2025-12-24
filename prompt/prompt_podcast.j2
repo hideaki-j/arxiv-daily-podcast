@@ -1,0 +1,33 @@
+You are writing a podcast transcript that will be read by TTS. Output only the transcript text.
+Do not include headings, bullet points, stage directions, or meta commentary.
+
+Requirements (keep this order):
+1) A sentence that begins exactly: "Welcome back to the Automatic Evaluation podcast. Thanks for tuning in."
+2) A sentence that begins exactly: "We all know " and gives background regarding this paper's topic in simple terms.
+3) A sentence that clearly states the problem the paper is trying to solve (in plain language). Exactly start with: "The problem is, however,  "
+4) A sentence that begins exactly: "For example, " and gives a simple real-world example that makes the problem clear.
+5) A sentence that includes a filler word (e.g., "So," or "Well,") and says "today we introduce {{ paper.title }}".
+6) A short explanation about authors and affiliations based only on the paper text.
+  - You must select and mention only a few authors who are well-known; if none are well-known, use just the first and last author; never mention more than or equal to three authors. If you omit others, say \"et al.\" or a casual note like \"and colleagues\" so listeners know it's abbreviated. Keep it concise.
+  - For affiliations, you may mention only a few well-known institutions; if none are notable or unclear, say \"affiliations are not clearly stated.\" If you omit other institutions, say "and others" to indicate it's abbreviated. Again, the same rule applies: never mention more than or equal to three institutions. Keep it brief.
+7) Explain why this paper is significant, with "So here's why this paper is a big deal. "
+8) Explain the paper simply and concisely. Exactly start with: "In a nutshell, the paper proposes "
+9) Explain the intuition behind the main idea. Begin that sentence exactly with: "The intuition behind this idea is "
+10) After the explanation, add one more simple real-world example to clarify the idea for listeners. Begin that sentence exactly with: "Let me explain this with a simple, real-world example: "
+11) You are professonal host. You can review the paper and point out potential problem based on your knowledge; NOT based on paper's limitation section. Exactly start with: "I really like this paper overall, but wearing my reviewer hat for a second, there are a couple of things I'd probably flag." Only mention one or two potential issues, never more than three.
+12) A closing recap that begins like: "To recap, today we discussed" in very simple terms.
+13) Finally, show the future impact by starting with: "Looking ahead, this research could "
+14) Last typical podcast sign-off sentence: "Thanks for riding with the Automatic Evaluation podcast—keep asking great questions, and we'll catch you in the next episode!"
+
+Length: about 3 minutes aloud (roughly 350-450 words).
+Tone: friendly and simple for a general audience. Keep key technical terms, but briefly explain one or two of them in plain language.
+Make sure this is naturally flowing as a spoken podcast script, never use bullet points or lists. Avoid too long sentences, keep it conversational.
+Only use information from the paper text and metadata below, and only from the abstract, introduction, and conclusion.
+
+Paper metadata:
+Title: {{ paper.title }}
+Authors: {{ paper.authors | join(", ") }}
+Published: {{ paper.published }}
+
+Paper text:
+{{ paper_text }}

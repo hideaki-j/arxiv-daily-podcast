@@ -1,0 +1,17 @@
+{
+  "gpt-5-2025-08-07": {
+    "input_usd_per_1m_tokens": 1.25,
+    "cached_input_usd_per_1m_tokens": 0.125,
+    "output_usd_per_1m_tokens": 10.0
+  },
+  "gpt-5-mini-2025-08-07": {
+    "input_usd_per_1m_tokens": 0.25,
+    "cached_input_usd_per_1m_tokens": 0.025,
+    "output_usd_per_1m_tokens": 2.0
+  },
+  "gpt-4o-mini-tts-2025-03-20": {
+    "input_usd_per_1m_text_tokens": 0.6,
+    "output_usd_per_1m_audio_tokens": 12.0,
+    "estimated_usd_per_minute": 0.015
+  }
+}

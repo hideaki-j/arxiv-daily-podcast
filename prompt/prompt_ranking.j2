@@ -1,0 +1,29 @@
+You are ranking recent arXiv cs.IR, cs.CL, and keyword-matched papers.
+
+Rank the papers based on:
+1. relevance to the "automatic evaluation" of IR for conversational systems (LLM-as-a-judge is a good keyword)
+2. well-known authors in the field
+
+Return JSON with exactly these keys:
+"automatic_eval_based_ranking"
+"author_based_ranking"
+"final_ranking"
+"tldr_list"
+
+Rules:
+- Use only the provided ids.
+- List exactly {{ top_n }} ids per key, highest first.
+- The final ranking should balance the two criteria.
+- "tldr_list" must be an array of exactly {{ top_n }} objects with keys:
+  - "id": one of the ids in final_ranking
+  - "tldr": ~50 words, plain sentences, no bullets or headings.
+
+PAPERS:
+{% for paper in papers %}
+ID: {{ paper.id }}
+Title: {{ paper.title }}
+Authors: {{ paper.authors | join("; ") }}
+Published: {{ paper.published }}
+Abstract: {{ paper.summary }}
+---
+{% endfor %}
