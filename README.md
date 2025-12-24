@@ -1,4 +1,4 @@
-# Automatic Evaluation Podcast
+# ArXiv Dialy Newsletter & Podcast
 
 Daily arXiv newsletter and podcast for automatic evaluation research. Fetches recent cs.IR and cs.CL papers plus keyword-matched papers, ranks them with LLM, generates podcast-style audio summaries, and sends email digests.
 
