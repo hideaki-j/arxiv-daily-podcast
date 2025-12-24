@@ -30,6 +30,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml
 2. Go to Settings -> Secrets and variables -> Actions, then add `OPENAI_API_KEY`, `GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD`.
 3. Edit the `cron` in `.github/workflows/arxiv-newsletter.yml` for your desired time (GitHub uses UTC).
 4. Open Actions -> ArXiv Newsletter -> Run workflow, or wait for the schedule; check logs if it fails.
+
 ## Configuration essentials
 
 Edit `my_config/config.yaml` to control the run:
