@@ -1,5 +1,6 @@
 email_enabled: true
 generate_transcript: true
+filter_since_last_schedule: true
 use_tts: true
 
 ranking_model: gpt-5-2025-08-07

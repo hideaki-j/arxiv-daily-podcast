@@ -25,6 +25,7 @@ Settings in `my_config/config.yaml`:
 |---------|---------------|-------------|
 | `email_enabled` | `true` | Enable/disable email sending |
 | `generate_transcript` | `true` | Enable/disable transcript generation |
+| `filter_since_last_schedule` | `true` | Filter papers to those updated after the last scheduled GitHub Action run (cron in `.github/workflows/arxiv-newsletter.yml`) |
 | `use_tts` | `true` | Enable/disable audio synthesis |
 | `ranking_model` | `gpt-5-2025-08-07` | Model for paper ranking |
 | `podcast_model` | `gpt-5-2025-08-07` | Model for transcript generation |

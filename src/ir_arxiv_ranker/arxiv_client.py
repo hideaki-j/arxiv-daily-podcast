@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import List
 from urllib.parse import urlencode
 
@@ -34,12 +35,23 @@ def _extract_pdf_url(entry, arxiv_id: str) -> str:
     return f"https://arxiv.org/pdf/{arxiv_id}.pdf"
 
 
+def _parse_arxiv_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    cleaned = value.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+
 def fetch_recent_papers(
     category: str,
     limit: int,
     timeout: int = 30,
     id_prefix: str = "P",
     sort_by: str = "submittedDate",
+    updated_after: datetime | None = None,
 ) -> List[Paper]:
     url = _build_query(f"cat:{category}", limit, sort_by=sort_by)
     response = httpx.get(url, timeout=timeout)
@@ -48,15 +60,21 @@ def fetch_recent_papers(
     feed = feedparser.parse(response.text)
     papers: List[Paper] = []
 
-    for idx, entry in enumerate(feed.entries, start=1):
+    for entry in feed.entries:
         arxiv_id = _extract_arxiv_id(entry.id)
-        paper_id = f"{id_prefix}{idx:03d}"
         title = " ".join(entry.title.split())
         authors = [author.name for author in getattr(entry, "authors", [])]
         published = getattr(entry, "published", "")
         updated = getattr(entry, "updated", "")
         summary = " ".join(getattr(entry, "summary", "").split())
         pdf_url = _extract_pdf_url(entry, arxiv_id)
+
+        if updated_after:
+            updated_dt = _parse_arxiv_datetime(updated) or _parse_arxiv_datetime(published)
+            if updated_dt and updated_dt <= updated_after:
+                continue
+
+        paper_id = f"{id_prefix}{len(papers) + 1:03d}"
 
         papers.append(
             Paper(
@@ -85,6 +103,7 @@ def fetch_keyword_papers(
     id_prefix: str = "OTH",
     exclude_categories: List[str] | None = None,
     sort_by: str = "submittedDate",
+    updated_after: datetime | None = None,
 ) -> List[Paper]:
     terms = [_sanitize_keyword(term) for term in keywords if term.strip()]
     query_terms = [f'all:"{term}"' for term in terms]
@@ -99,15 +118,21 @@ def fetch_keyword_papers(
     feed = feedparser.parse(response.text)
     papers: List[Paper] = []
 
-    for idx, entry in enumerate(feed.entries, start=1):
+    for entry in feed.entries:
         arxiv_id = _extract_arxiv_id(entry.id)
-        paper_id = f"{id_prefix}{idx:03d}"
         title = " ".join(entry.title.split())
         authors = [author.name for author in getattr(entry, "authors", [])]
         published = getattr(entry, "published", "")
         updated = getattr(entry, "updated", "")
         summary = " ".join(getattr(entry, "summary", "").split())
         pdf_url = _extract_pdf_url(entry, arxiv_id)
+
+        if updated_after:
+            updated_dt = _parse_arxiv_datetime(updated) or _parse_arxiv_datetime(published)
+            if updated_dt and updated_dt <= updated_after:
+                continue
+
+        paper_id = f"{id_prefix}{len(papers) + 1:03d}"
 
         papers.append(
             Paper(

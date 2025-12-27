@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-import yaml
 from dotenv import load_dotenv
 from jinja2 import Environment, StrictUndefined
 from openai import OpenAI
@@ -14,6 +13,7 @@ from utils.costs import CostTracker
 
 from .affiliations import extract_affiliations_batch
 from .arxiv_client import fetch_keyword_papers, fetch_recent_papers
+from .config import load_config
 from .emailer import send_email
 from .output import (
     create_run_dir,
@@ -23,6 +23,7 @@ from .output import (
     write_results_json,
 )
 from .podcast import generate_transcripts_batch, load_podcast_prompt, write_transcript
+from .schedule import last_scheduled_run, load_workflow_cron_schedules
 from .tts import batch_synthesize_podcast
 from .ranking import rank_papers
 
@@ -33,6 +34,7 @@ DEFAULT_CONFIG_PATH = Path("my_config") / "config.yaml"
 DEFAULT_PROMPT_PATH = Path("prompt") / "prompt_ranking.j2"
 DEFAULT_PODCAST_PROMPT_PATH = Path("prompt") / "prompt_podcast.j2"
 DEFAULT_NEWSLETTER_TEMPLATE = Path("template") / "newsletter.j2"
+DEFAULT_WORKFLOW_PATH = Path(".github") / "workflows" / "arxiv-newsletter.yml"
 AFFILIATION_MODEL = "gpt-5-mini-2025-08-07"
 AFFILIATION_TOKEN_LIMIT = 200
 
@@ -80,142 +82,141 @@ def _date_only(value: str) -> str:
     return value.split("T", 1)[0]
 
 
+def _parse_iso_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    cleaned = value.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+
+
+def _paper_datetime(paper) -> datetime | None:
+    for ts in (paper.updated, paper.published):
+        dt = _parse_iso_datetime(ts)
+        if dt:
+            return dt
+    return None
+
+
+def _count_sources(papers: list) -> dict[str, int]:
+    counts = {"ir": 0, "cl": 0, "keywords": 0, "total": len(papers)}
+    for paper in papers:
+        pid = paper.paper_id.upper()
+        if pid.startswith("IR"):
+            counts["ir"] += 1
+        elif pid.startswith("CL"):
+            counts["cl"] += 1
+        elif pid.startswith("OTH"):
+            counts["keywords"] += 1
+    return counts
+
+
+def _select_by_date_cascade(papers: list, min_count: int) -> tuple[list, tuple[str | None, str | None]]:
+    date_buckets: dict[date, list] = {}
+    undated: list = []
+    for paper in papers:
+        dt = _paper_datetime(paper)
+        if dt:
+            date_buckets.setdefault(dt.date(), []).append(paper)
+        else:
+            undated.append(paper)
+
+    selected: list = []
+    latest_date: date | None = None
+    earliest_date: date | None = None
+    min_dt = datetime.min.replace(tzinfo=timezone.utc)
+    for day in sorted(date_buckets.keys(), reverse=True):
+        bucket = sorted(
+            date_buckets[day],
+            key=lambda p: _paper_datetime(p) or min_dt,
+            reverse=True,
+        )
+        selected.extend(bucket)
+        if latest_date is None:
+            latest_date = day
+        earliest_date = day
+        if len(selected) >= min_count:
+            break
+
+    if len(selected) < min_count and undated:
+        selected.extend(undated)
+
+    return selected, (
+        latest_date.isoformat() if latest_date else None,
+        earliest_date.isoformat() if earliest_date else None,
+    )
+
+
 def main() -> None:
     load_dotenv()
     args = _parse_args()
 
-    if not args.config.exists():
-        raise SystemExit(f"Config file not found: {args.config}")
-    config = yaml.safe_load(args.config.read_text()) or {}
-    if not isinstance(config, dict):
-        raise SystemExit("Config file must contain a YAML object at the top level.")
-
+    settings = load_config(args.config)
     cost_tracker = CostTracker()
 
-    ranking_model = config.get("ranking_model")
-    podcast_model = config.get("podcast_model")
-    ir_limit = config.get("ir_limit")
-    nlp_limit = config.get("nlp_limit")
-    others_limit = config.get("others_limit")
-    keywords_path = config.get("keywords_path")
-    top_n = config.get("top_n")
-    top_n_tts = config.get("top_n_tts")
-    abst_word_cutoff = config.get("abst_word_cutoff")
-    transcript_word_cutoff = config.get("transcript_word_cutoff")
-    generate_transcript_flag = config.get("generate_transcript", True)
-    use_tts = config.get("use_tts", True)
-    tts_model = config.get("tts_model")
-    tts_voice = config.get("tts_voice")
-    tts_instructions_path = config.get("tts_instructions_path")
-    tts_instructions = None
-    compress_to_64kbps = config.get("compress_to_64kbps", True)
-    email_enabled = config.get("email_enabled", False)
-    pricing_path = config.get("pricing_path")
-    arxiv_timeout = config.get("arxiv_timeout")
-    openai_timeout = config.get("openai_timeout")
+    ranking_model = settings.ranking_model
+    podcast_model = settings.podcast_model
+    ir_limit = settings.ir_limit
+    nlp_limit = settings.nlp_limit
+    others_limit = settings.others_limit
+    keywords = settings.keywords
+    top_n = settings.top_n
+    top_n_tts = settings.top_n_tts
+    abst_word_cutoff = settings.abst_word_cutoff
+    transcript_word_cutoff = settings.transcript_word_cutoff
+    generate_transcript_flag = settings.generate_transcript
+    filter_since_last_schedule = settings.filter_since_last_schedule
+    use_tts = settings.use_tts
+    tts_model = settings.tts_model
+    tts_voice = settings.tts_voice
+    tts_instructions = settings.tts_instructions
+    compress_to_64kbps = settings.compress_to_64kbps
+    email_enabled = settings.email_enabled
+    pricing_data = settings.pricing_data
+    arxiv_timeout = settings.arxiv_timeout
+    openai_timeout = settings.openai_timeout
     gmail_address = None
     gmail_password = None
-
-    if not ranking_model:
-        raise SystemExit("Config must include ranking_model")
-    if not podcast_model:
-        raise SystemExit("Config must include podcast_model")
-    if not isinstance(use_tts, bool):
-        raise SystemExit("use_tts must be a boolean")
-    if not isinstance(email_enabled, bool):
-        raise SystemExit("email_enabled must be a boolean")
-    if not generate_transcript_flag and use_tts:
-        print("use_tts ignored because generate_transcript is false.")
-        use_tts = False
-    if use_tts:
-        if not tts_model:
-            raise SystemExit("Config must include tts_model")
-        if not tts_voice:
-            raise SystemExit("Config must include tts_voice")
-        if tts_instructions_path:
-            tts_file = Path(tts_instructions_path)
-            if not tts_file.exists():
-                raise SystemExit(f"TTS instructions file not found: {tts_file}")
-            tts_instructions = tts_file.read_text().strip()
-            if not tts_instructions:
-                raise SystemExit("tts_instructions_path must point to non-empty text")
-        else:
-            tts_instructions = config.get(
-                "tts_instructions",
-                "Energetic, upbeat podcast host tone. Friendly and engaging, clear enunciation.",
-            )
-            if not isinstance(tts_instructions, str) or not tts_instructions.strip():
-                raise SystemExit("tts_instructions must be a non-empty string")
-        if not isinstance(compress_to_64kbps, bool):
-            raise SystemExit("compress_to_64kbps must be a boolean")
-    if not isinstance(ir_limit, int) or ir_limit < 1:
-        raise SystemExit("ir_limit must be an integer >= 1")
-    if not isinstance(nlp_limit, int) or nlp_limit < 1:
-        raise SystemExit("nlp_limit must be an integer >= 1")
-    if not isinstance(others_limit, int) or others_limit < 1:
-        raise SystemExit("others_limit must be an integer >= 1")
-    if not isinstance(top_n, int) or top_n < 1:
-        raise SystemExit("top_n must be an integer >= 1")
-    if not isinstance(top_n_tts, int) or top_n_tts < 0:
-        raise SystemExit("top_n_tts must be an integer >= 0")
-    if top_n_tts > top_n:
-        raise SystemExit("top_n_tts must be <= top_n")
-    if not isinstance(abst_word_cutoff, int) or abst_word_cutoff < 1:
-        raise SystemExit("abst_word_cutoff must be an integer >= 1")
-    if transcript_word_cutoff is not None:
-        if not isinstance(transcript_word_cutoff, int) or transcript_word_cutoff < 1:
-            raise SystemExit("transcript_word_cutoff must be an integer >= 1")
-    if not isinstance(generate_transcript_flag, bool):
-        raise SystemExit("generate_transcript must be a boolean")
-    if not isinstance(arxiv_timeout, int) or arxiv_timeout < 1:
-        raise SystemExit("arxiv_timeout must be an integer >= 1")
-    if not isinstance(openai_timeout, int) or openai_timeout < 1:
-        raise SystemExit("openai_timeout must be an integer >= 1")
-    if not pricing_path:
-        raise SystemExit("pricing_path must be set in config")
-    if not keywords_path:
-        raise SystemExit("keywords_path must be set in config")
-    pricing_file = Path(pricing_path)
-    if not pricing_file.exists():
-        raise SystemExit(f"Pricing file not found: {pricing_file}")
-    pricing_data = json.loads(pricing_file.read_text() or "{}")
-    if not isinstance(pricing_data, dict):
-        raise SystemExit("Pricing file must contain a JSON object at the top level.")
-    for model_name, pricing in pricing_data.items():
-        if pricing is None:
-            continue
-        if not isinstance(pricing, dict):
-            raise SystemExit(f"pricing.{model_name} must be a mapping")
-        for key, value in pricing.items():
-            if value is None:
-                continue
-            if not isinstance(value, (int, float)) or value < 0:
-                raise SystemExit(f"pricing.{model_name}.{key} must be >= 0")
-
     ranking_pricing = pricing_data.get(ranking_model, {}) or {}
     podcast_pricing = pricing_data.get(podcast_model, {}) or {}
     tts_pricing = pricing_data.get(tts_model, {}) or {}
     affiliation_pricing = pricing_data.get(AFFILIATION_MODEL, {}) or {}
-
-    keywords_file = Path(keywords_path)
-    if not keywords_file.exists():
-        raise SystemExit(f"Keywords file not found: {keywords_file}")
-    keywords_data = yaml.safe_load(keywords_file.read_text()) or []
-    if isinstance(keywords_data, dict):
-        keywords = keywords_data.get("keywords", [])
-    else:
-        keywords = keywords_data
-    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
-        raise SystemExit("Keywords file must contain a list of strings or a 'keywords' list.")
-    keywords = [k.strip() for k in keywords if k.strip()]
-    if not keywords:
-        raise SystemExit("Keywords list is empty.")
 
     if email_enabled:
         gmail_address = os.getenv("GMAIL_ADDRESS")
         gmail_password = os.getenv("GMAIL_APP_PASSWORD")
         if not gmail_address or not gmail_password:
             raise SystemExit("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set in .env")
+
+    updated_after = None
+    last_scheduled_time: datetime | None = None
+    fallback_note: str | None = None
+    if filter_since_last_schedule:
+        cron_entries = load_workflow_cron_schedules(DEFAULT_WORKFLOW_PATH)
+        if not cron_entries:
+            print(
+                "filter_since_last_schedule is enabled but no cron schedules were found "
+                f"in {DEFAULT_WORKFLOW_PATH}. Falling back to unfiltered results."
+            )
+        else:
+            last_run = last_scheduled_run(
+                cron_entries, now=datetime.now(timezone.utc), lookback_days=30
+            )
+            if last_run:
+                updated_after = last_run
+                last_scheduled_time = last_run
+                print(
+                    "Schedule-based filtering enabled; only keeping papers updated after "
+                    f"{updated_after.isoformat()} (last scheduled cron time, "
+                    "not guaranteed to be the last successful run)."
+                )
+            else:
+                print(
+                    "filter_since_last_schedule is enabled but the last scheduled run "
+                    "was not found in the recent window. Falling back to unfiltered results."
+                )
 
     capped_ir_limit = min(ir_limit, MAX_LIMIT)
     capped_nlp_limit = min(nlp_limit, MAX_LIMIT)
@@ -227,55 +228,94 @@ def main() -> None:
     if capped_others_limit != others_limit:
         print(f"Capping others_limit to {MAX_LIMIT}")
 
-    print(
-        "Fetching up to "
-        f"{capped_ir_limit} cs.IR, {capped_nlp_limit} cs.CL, "
-        f"and {capped_others_limit} keyword-matched papers from arXiv..."
-    )
+    def fetch_all(updated_after_value: datetime | None) -> tuple[list, dict[str, int]]:
+        print(
+            "Fetching up to "
+            f"{capped_ir_limit} cs.IR, {capped_nlp_limit} cs.CL, "
+            f"and {capped_others_limit} keyword-matched papers from arXiv..."
+        )
+        ir_papers = fetch_recent_papers(
+            category="cs.IR",
+            limit=capped_ir_limit,
+            timeout=arxiv_timeout,
+            id_prefix="IR",
+            sort_by="lastUpdatedDate",
+            updated_after=updated_after_value,
+        )
+        nlp_papers = fetch_recent_papers(
+            category="cs.CL",
+            limit=capped_nlp_limit,
+            timeout=arxiv_timeout,
+            id_prefix="CL",
+            sort_by="lastUpdatedDate",
+            updated_after=updated_after_value,
+        )
+        keyword_papers = fetch_keyword_papers(
+            keywords=keywords,
+            limit=capped_others_limit,
+            timeout=arxiv_timeout,
+            id_prefix="OTH",
+            exclude_categories=["cs.IR", "cs.CL"],
+            sort_by="lastUpdatedDate",
+            updated_after=updated_after_value,
+        )
+        existing_ids = {paper.arxiv_id for paper in ir_papers + nlp_papers}
+        filtered_keyword_papers = [
+            paper for paper in keyword_papers if paper.arxiv_id not in existing_ids
+        ]
+        if len(filtered_keyword_papers) < len(keyword_papers):
+            print(
+                f"Removed {len(keyword_papers) - len(filtered_keyword_papers)} "
+                "keyword papers that overlap with IR/CL."
+            )
+        if len(filtered_keyword_papers) < capped_others_limit:
+            print(
+                f"Only {len(filtered_keyword_papers)} keyword papers available after filtering."
+            )
+        papers_local = ir_papers + nlp_papers + filtered_keyword_papers
+        print(
+            f"Fetched {len(ir_papers)} cs.IR, {len(nlp_papers)} cs.CL, "
+            f"and {len(filtered_keyword_papers)} keyword papers."
+        )
+        counts = _count_sources(papers_local)
+        return papers_local, counts
+
     prompt_template = DEFAULT_PROMPT_PATH.read_text()
-    ir_papers = fetch_recent_papers(
-        category="cs.IR",
-        limit=capped_ir_limit,
-        timeout=arxiv_timeout,
-        id_prefix="IR",
-        sort_by="lastUpdatedDate",
-    )
-    nlp_papers = fetch_recent_papers(
-        category="cs.CL",
-        limit=capped_nlp_limit,
-        timeout=arxiv_timeout,
-        id_prefix="CL",
-        sort_by="lastUpdatedDate",
-    )
-    keyword_papers = fetch_keyword_papers(
-        keywords=keywords,
-        limit=capped_others_limit,
-        timeout=arxiv_timeout,
-        id_prefix="OTH",
-        exclude_categories=["cs.IR", "cs.CL"],
-        sort_by="lastUpdatedDate",
-    )
-    existing_ids = {paper.arxiv_id for paper in ir_papers + nlp_papers}
-    filtered_keyword_papers = [
-        paper for paper in keyword_papers if paper.arxiv_id not in existing_ids
-    ]
-    if len(filtered_keyword_papers) < len(keyword_papers):
-        print(
-            f"Removed {len(keyword_papers) - len(filtered_keyword_papers)} "
-            "keyword papers that overlap with IR/CL."
+    papers, fetch_counts = fetch_all(updated_after)
+
+    if len(papers) < top_n and filter_since_last_schedule and last_scheduled_time:
+        filtered_count = len(papers)
+        fallback_reason = (
+            "no new papers found"
+            if not papers
+            else f"only {len(papers)} new paper(s) found"
         )
-    if len(filtered_keyword_papers) < capped_others_limit:
         print(
-            f"Only {len(filtered_keyword_papers)} keyword papers available after filtering."
+            f"{fallback_reason.capitalize()} after schedule filtering; "
+            "falling back to the most recent dates from the unfiltered feed."
         )
-    papers = ir_papers + nlp_papers + filtered_keyword_papers
-    print(
-        f"Fetched {len(ir_papers)} cs.IR, {len(nlp_papers)} cs.CL, "
-        f"and {len(filtered_keyword_papers)} keyword papers."
-    )
+        fallback_papers, _ = fetch_all(None)
+        papers, (latest_date_iso, earliest_date_iso) = _select_by_date_cascade(
+            fallback_papers, top_n
+        )
+        fetch_counts = _count_sources(papers)
+        date_span = ""
+        if latest_date_iso and earliest_date_iso:
+            date_span = f"{latest_date_iso} to {earliest_date_iso}"
+        elif latest_date_iso:
+            date_span = latest_date_iso
+        fallback_note = (
+            "Schedule filter based on the last scheduled cron time "
+            f"({last_scheduled_time.isoformat()}) returned {filtered_count} paper(s); "
+            "fell back to the most recent dates "
+            f"({date_span or 'unfiltered range'}) for this newsletter. "
+            "Note this uses the scheduled time, not necessarily the last successful run."
+        )
 
     if len(papers) < top_n:
         raise SystemExit("Not enough papers fetched for the requested top-n")
+    if fallback_note:
+        print(f"Fallback note: {fallback_note}")
 
     print("Ranking papers with LLM...")
     client = OpenAI()
@@ -372,7 +412,16 @@ def main() -> None:
             max_workers=min(4, len(rankings.final_ranking)),
         )
 
-        lines = [f"Run dir: {run_dir}", "", "Top papers:"]
+        stats_line = (
+            f"Stats: IR {fetch_counts.get('ir', 0)}, "
+            f"CL {fetch_counts.get('cl', 0)}, "
+            f"Keywords {fetch_counts.get('keywords', 0)} (final set)."
+        )
+
+        lines: list[str] = []
+        if fallback_note:
+            lines.append(f"NOTE: {fallback_note}")
+        lines.extend([stats_line, "", "Top papers:"])
         items: list[dict[str, str]] = []
         for rank, paper_id in enumerate(rankings.final_ranking, start=1):
             paper = papers_by_id[paper_id]
@@ -414,6 +463,15 @@ def main() -> None:
             run_name=run_dir.name,
             items=items,
         )
+        html_stats = (
+            f"<p><strong>Stats:</strong> IR {fetch_counts.get('ir', 0)}, "
+            f"CL {fetch_counts.get('cl', 0)}, "
+            f"Keywords {fetch_counts.get('keywords', 0)} (final set).</p>"
+        )
+        html_prefix = ""
+        if fallback_note:
+            html_prefix += f"<p><strong>NOTE:</strong> {fallback_note}</p>"
+        html_body = html_prefix + html_stats + html_body
         write_newsletter_html(newsletter_dir, html_body, "newsletter.html")
         attachments = podcast_paths if podcast_paths else None
         if attachments:
