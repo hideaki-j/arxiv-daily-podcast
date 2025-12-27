@@ -193,6 +193,7 @@ def main() -> None:
     updated_after = None
     last_scheduled_time: datetime | None = None
     fallback_note: str | None = None
+    last_scheduled_date_str: str | None = None
     if filter_since_last_schedule:
         cron_entries = load_workflow_cron_schedules(DEFAULT_WORKFLOW_PATH)
         if not cron_entries:
@@ -207,9 +208,10 @@ def main() -> None:
             if last_run:
                 updated_after = last_run
                 last_scheduled_time = last_run
+                last_scheduled_date_str = last_run.date().isoformat()
                 print(
                     "Schedule-based filtering enabled; only keeping papers updated after "
-                    f"{updated_after.isoformat()} (last scheduled cron time, "
+                    f"{last_scheduled_date_str} (last scheduled cron date, "
                     "not guaranteed to be the last successful run)."
                 )
             else:
@@ -304,9 +306,12 @@ def main() -> None:
             date_span = f"{latest_date_iso} to {earliest_date_iso}"
         elif latest_date_iso:
             date_span = latest_date_iso
+        schedule_label = last_scheduled_date_str or (
+            last_scheduled_time.date().isoformat() if last_scheduled_time else "N/A"
+        )
         fallback_note = (
-            "Schedule filter based on the last scheduled cron time "
-            f"({last_scheduled_time.isoformat()}) returned {filtered_count} paper(s); "
+            "Schedule filter based on the last scheduled cron date "
+            f"({schedule_label}) returned {filtered_count} paper(s); "
             "fell back to the most recent dates "
             f"({date_span or 'unfiltered range'}) for this newsletter. "
             "Note this uses the scheduled time, not necessarily the last successful run."

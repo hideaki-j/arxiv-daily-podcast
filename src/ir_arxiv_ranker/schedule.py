@@ -174,7 +174,12 @@ def load_workflow_cron_schedules(workflow_path: Path) -> list[str]:
     except Exception:
         return []
 
-    on_section = workflow.get("on", {})
+    on_section = workflow.get("on")
+    if on_section is None and True in workflow:
+        # GitHub Actions workflows often use the key "on", which YAML may coerce to bool.
+        on_section = workflow.get(True)
+    if on_section is None:
+        on_section = {}
     if not isinstance(on_section, dict):
         return []
     schedule_entries = on_section.get("schedule", [])
