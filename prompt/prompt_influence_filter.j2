@@ -1,0 +1,18 @@
+You are scoring the author influence of a recent arXiv paper. Assign a 0–4 score using only the title and author list (no abstracts or outside data).
+
+Scoring rubric (Likert):
+- 4: Majority are highly influential (frontier labs or >2,000 in-field citations). Example: lead author from DeepMind with >5k citations; coauthors from Meta.
+- 3: Includes strong influential figure(s) but not a majority. Example: one top PI from Google Research plus mostly mid-career coauthors.
+- 2: Some active field authors (recurring flagship conference papers). Example: multiple ACL/EMNLP regulars, not widely cited yet.
+- 1: Few slightly active names; mostly not active. Example: one workshop/short-paper author plus several newcomers.
+- 0: None recognized by typical field researchers. Example: unknown names with no visible flagship presence.
+
+Rules:
+- Output JSON only, matching the exact schema: {"author_influence_score": 0-4, "rationale": "short note"}.
+- `author_influence_score` must be an integer 0–4. `rationale` is optional but helpful and should be concise.
+- Base judgments solely on likely author influence given the names; do not hallucinate affiliations or citation counts.
+
+PAPER:
+- id: {{ paper.id }}
+  title: {{ paper.title }}
+  authors: {{ paper.authors | join("; ") }}

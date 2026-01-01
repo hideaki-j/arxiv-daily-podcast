@@ -148,9 +148,35 @@ def previous_schedule_hit(
     return None
 
 
+def second_previous_schedule_hit(
+    spec: CronSpec, now: datetime, lookback_days: int = 30
+) -> datetime | None:
+    """Find the schedule hit before the most recent one.
+
+    This is useful when determining which papers to include in a newsletter:
+    we want papers updated since the *previous* newsletter was sent, not since
+    the current scheduled time.
+
+    For example, if running at 13:41 UTC on Dec 30 with cron "0 13 * * 1-5":
+    - previous_schedule_hit would return Dec 30 13:00 UTC (today's schedule)
+    - second_previous_schedule_hit returns Dec 29 13:00 UTC (yesterday's schedule)
+    """
+    first_hit = previous_schedule_hit(spec, now, lookback_days=lookback_days)
+    if first_hit is None:
+        return None
+    # Find the schedule hit before the first one
+    return previous_schedule_hit(spec, first_hit, lookback_days=lookback_days)
+
+
 def last_scheduled_run(
     cron_expressions: Iterable[str], now: datetime | None = None, lookback_days: int = 30
 ) -> datetime | None:
+    """Return the schedule hit before the most recent one.
+
+    This finds when the *previous* newsletter was supposed to run, so we can
+    filter papers updated since that time. Using second_previous_schedule_hit
+    ensures we include papers from the full interval between runs.
+    """
     now = now or datetime.now(timezone.utc)
     candidates: list[datetime] = []
     for expr in cron_expressions:
@@ -158,7 +184,7 @@ def last_scheduled_run(
             spec = parse_cron_expression(expr)
         except ValueError:
             continue
-        hit = previous_schedule_hit(spec, now, lookback_days=lookback_days)
+        hit = second_previous_schedule_hit(spec, now, lookback_days=lookback_days)
         if hit:
             candidates.append(hit)
     if not candidates:

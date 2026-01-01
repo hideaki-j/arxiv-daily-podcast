@@ -10,10 +10,12 @@ from jinja2 import Environment, StrictUndefined
 from openai import OpenAI
 
 from utils.costs import CostTracker
+from utils.timezone import format_toronto_time
 
 from .affiliations import extract_affiliations_batch
 from .arxiv_client import fetch_keyword_papers, fetch_recent_papers
 from .config import load_config
+from .influence_filter import filter_by_author_influence
 from .emailer import send_email
 from .output import (
     create_run_dir,
@@ -175,6 +177,10 @@ def main() -> None:
     compress_to_64kbps = settings.compress_to_64kbps
     email_enabled = settings.email_enabled
     pricing_data = settings.pricing_data
+    influence_filter_model = settings.influence_filter_model
+    influence_prompt_path = Path(settings.influence_prompt_path)
+    influence_score_threshold = settings.influence_score_threshold
+    influence_max_workers = settings.influence_max_workers
     arxiv_timeout = settings.arxiv_timeout
     openai_timeout = settings.openai_timeout
     gmail_address = None
@@ -182,6 +188,7 @@ def main() -> None:
     ranking_pricing = pricing_data.get(ranking_model, {}) or {}
     podcast_pricing = pricing_data.get(podcast_model, {}) or {}
     tts_pricing = pricing_data.get(tts_model, {}) or {}
+    influence_pricing = pricing_data.get(influence_filter_model, {}) or {}
     affiliation_pricing = pricing_data.get(AFFILIATION_MODEL, {}) or {}
 
     if email_enabled:
@@ -190,10 +197,9 @@ def main() -> None:
         if not gmail_address or not gmail_password:
             raise SystemExit("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set in .env")
 
-    updated_after = None
     last_scheduled_time: datetime | None = None
     fallback_note: str | None = None
-    last_scheduled_date_str: str | None = None
+    last_scheduled_datetime_str: str | None = None
     if filter_since_last_schedule:
         cron_entries = load_workflow_cron_schedules(DEFAULT_WORKFLOW_PATH)
         if not cron_entries:
@@ -206,12 +212,11 @@ def main() -> None:
                 cron_entries, now=datetime.now(timezone.utc), lookback_days=30
             )
             if last_run:
-                updated_after = last_run
                 last_scheduled_time = last_run
-                last_scheduled_date_str = last_run.date().isoformat()
+                last_scheduled_datetime_str = format_toronto_time(last_run)
                 print(
-                    "Schedule-based filtering enabled; only keeping papers updated after "
-                    f"{last_scheduled_date_str} (last scheduled cron date, "
+                    "Schedule-based filtering enabled; will later keep papers updated after "
+                    f"{last_scheduled_datetime_str} (last scheduled cron time, "
                     "not guaranteed to be the last successful run)."
                 )
             else:
@@ -283,53 +288,89 @@ def main() -> None:
         return papers_local, counts
 
     prompt_template = DEFAULT_PROMPT_PATH.read_text()
-    papers, fetch_counts = fetch_all(updated_after)
+    influence_prompt_template = influence_prompt_path.read_text()
 
-    if len(papers) < top_n and filter_since_last_schedule and last_scheduled_time:
-        filtered_count = len(papers)
-        fallback_reason = (
-            "no new papers found"
-            if not papers
-            else f"only {len(papers)} new paper(s) found"
-        )
-        print(
-            f"{fallback_reason.capitalize()} after schedule filtering; "
-            "falling back to the most recent dates from the unfiltered feed."
-        )
-        fallback_papers, _ = fetch_all(None)
-        papers, (latest_date_iso, earliest_date_iso) = _select_by_date_cascade(
-            fallback_papers, top_n
-        )
-        fetch_counts = _count_sources(papers)
-        date_span = ""
-        if latest_date_iso and earliest_date_iso:
-            date_span = f"{latest_date_iso} to {earliest_date_iso}"
-        elif latest_date_iso:
-            date_span = latest_date_iso
-        schedule_label = last_scheduled_date_str or (
-            last_scheduled_time.date().isoformat() if last_scheduled_time else "N/A"
-        )
-        fallback_note = (
-            "Schedule filter based on the last scheduled cron date "
-            f"({schedule_label}) returned {filtered_count} paper(s); "
-            "fell back to the most recent dates "
-            f"({date_span or 'unfiltered range'}) for this newsletter. "
-            "Note this uses the scheduled time, not necessarily the last successful run."
-        )
+    client = OpenAI()
+
+    # Stage 1: fetch without date filtering, then gate by author influence
+    papers, _ = fetch_all(None)
+    fetched_count = len(papers)
+    influence_result = filter_by_author_influence(
+        client=client,
+        model=influence_filter_model,
+        prompt_template=influence_prompt_template,
+        papers=papers,
+        threshold=influence_score_threshold,
+        max_workers=influence_max_workers,
+        pricing=influence_pricing,
+        cost_tracker=cost_tracker,
+        openai_timeout=openai_timeout,
+    )
+    author_influence_by_id = influence_result.scores_by_id
+    papers = influence_result.kept_papers
+    influence_gate_note = (
+        f"Author influence gate kept {len(papers)}/{fetched_count} papers "
+        f"(threshold >= {influence_score_threshold})."
+    )
+    fetch_counts = _count_sources(papers)
+
+    # Stage 2: apply date filtering (schedule-based) to already-filtered set
+    if filter_since_last_schedule and last_scheduled_time:
+        updated_after = last_scheduled_time
+        recent_papers = []
+        for paper in papers:
+            dt = _paper_datetime(paper)
+            if dt and dt > updated_after:
+                recent_papers.append(paper)
+        if len(recent_papers) < top_n:
+            filtered_count = len(recent_papers)
+            fallback_reason = (
+                "no new papers found"
+                if not recent_papers
+                else f"only {len(recent_papers)} new paper(s) found"
+            )
+            print(
+                f"{fallback_reason.capitalize()} after schedule filtering; "
+                "falling back to the most recent dates from the influence-filtered set."
+            )
+            papers, (latest_date_iso, earliest_date_iso) = _select_by_date_cascade(
+                papers, top_n
+            )
+            fetch_counts = _count_sources(papers)
+            date_span = ""
+            if latest_date_iso and earliest_date_iso:
+                date_span = f"{latest_date_iso} to {earliest_date_iso}"
+            elif latest_date_iso:
+                date_span = latest_date_iso
+            schedule_label = last_scheduled_datetime_str or (
+                format_toronto_time(last_scheduled_time) if last_scheduled_time else "N/A"
+            )
+            fallback_note = (
+                "Schedule filter based on the last scheduled cron time "
+                f"({schedule_label}) returned {filtered_count} paper(s); "
+                "fell back to the most recent dates "
+                f"({date_span or 'unfiltered range'}) after the author influence gate. "
+                "Note this uses the scheduled time, not necessarily the last successful run."
+            )
+        else:
+            papers = recent_papers
+            fetch_counts = _count_sources(papers)
 
     if len(papers) < top_n:
-        raise SystemExit("Not enough papers fetched for the requested top-n")
+        raise SystemExit(
+            f"Not enough papers ({len(papers)}) after author influence/date filters for requested top-n {top_n}"
+        )
     if fallback_note:
         print(f"Fallback note: {fallback_note}")
 
     print("Ranking papers with LLM...")
-    client = OpenAI()
     rankings = rank_papers(
         client=client,
         model=ranking_model,
         prompt_template=prompt_template,
         papers=papers,
         top_n=top_n,
+        author_influence_by_id=author_influence_by_id,
         abstract_word_cutoff=abst_word_cutoff,
         pricing=ranking_pricing,
         cost_tracker=cost_tracker,
@@ -340,8 +381,20 @@ def main() -> None:
     run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
     papers_by_id = {paper.paper_id: paper for paper in papers}
 
-    write_csv(run_dir, papers_by_id, rankings, tldr_by_id=rankings.tldr_by_id)
-    write_results_json(run_dir, papers, rankings, tldr_by_id=rankings.tldr_by_id)
+    write_csv(
+        run_dir,
+        papers_by_id,
+        rankings,
+        tldr_by_id=rankings.tldr_by_id,
+        author_influence_by_id=author_influence_by_id,
+    )
+    write_results_json(
+        run_dir,
+        papers,
+        rankings,
+        tldr_by_id=rankings.tldr_by_id,
+        author_influence_by_id=author_influence_by_id,
+    )
     print("Downloading top papers...")
     pdf_paths = download_papers(papers_dir, papers, rankings.final_ranking)
     print("Download complete.")
@@ -426,6 +479,8 @@ def main() -> None:
         lines: list[str] = []
         if fallback_note:
             lines.append(f"NOTE: {fallback_note}")
+        if influence_gate_note:
+            lines.append(influence_gate_note)
         lines.extend([stats_line, "", "Top papers:"])
         items: list[dict[str, str]] = []
         for rank, paper_id in enumerate(rankings.final_ranking, start=1):
@@ -476,6 +531,8 @@ def main() -> None:
         html_prefix = ""
         if fallback_note:
             html_prefix += f"<p><strong>NOTE:</strong> {fallback_note}</p>"
+        if influence_gate_note:
+            html_prefix += f"<p><strong>Author filter:</strong> {influence_gate_note}</p>"
         html_body = html_prefix + html_stats + html_body
         write_newsletter_html(newsletter_dir, html_body, "newsletter.html")
         attachments = podcast_paths if podcast_paths else None

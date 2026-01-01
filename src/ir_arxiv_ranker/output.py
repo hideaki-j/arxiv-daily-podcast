@@ -51,6 +51,7 @@ def write_csv(
     papers_by_id: Dict[str, Paper],
     rankings: Rankings,
     tldr_by_id: Dict[str, str] | None = None,
+    author_influence_by_id: Dict[str, int] | None = None,
 ) -> Path:
     csv_path = run_dir / "rankings.csv"
     order = rankings.final_ranking
@@ -63,9 +64,10 @@ def write_csv(
                 "title",
                 "authors",
                 "uploaded_at",
+                "author_influence_threshold",
                 "tldr",
-                "automatic_eval_based_ranking",
-                "author_based_ranking",
+                "automatic_eval_ranking",
+                "user_simulator_ranking",
                 "final_ranking",
             ]
         )
@@ -73,17 +75,23 @@ def write_csv(
             paper = papers_by_id[paper_id]
             authors = "; ".join(paper.authors)
             tldr = ""
+            author_influence = ""
             if tldr_by_id:
                 tldr = tldr_by_id.get(paper_id, "")
+            if author_influence_by_id:
+                score = author_influence_by_id.get(paper_id)
+                if score is not None:
+                    author_influence = str(score)
             writer.writerow(
                 [
                     paper.paper_id,
                     paper.title,
                     authors,
                     paper.published,
+                    author_influence,
                     tldr,
-                    _rank_position(rankings.automatic_eval_based_ranking, paper_id),
-                    _rank_position(rankings.author_based_ranking, paper_id),
+                    _rank_position(rankings.automatic_eval_ranking, paper_id),
+                    _rank_position(rankings.user_simulator_ranking, paper_id),
                     _rank_position(rankings.final_ranking, paper_id),
                 ]
             )
@@ -96,11 +104,12 @@ def write_results_json(
     papers: Iterable[Paper],
     rankings: Rankings,
     tldr_by_id: Dict[str, str] | None = None,
+    author_influence_by_id: Dict[str, int] | None = None,
 ) -> Path:
     payload = {
         "rankings": {
-            "automatic_eval_based_ranking": rankings.automatic_eval_based_ranking,
-            "author_based_ranking": rankings.author_based_ranking,
+            "automatic_eval_ranking": rankings.automatic_eval_ranking,
+            "user_simulator_ranking": rankings.user_simulator_ranking,
             "final_ranking": rankings.final_ranking,
         },
         "papers": [
@@ -114,6 +123,9 @@ def write_results_json(
                 "summary": paper.summary,
                 "pdf_url": paper.pdf_url,
                 "tldr": (tldr_by_id or {}).get(paper.paper_id, ""),
+                "author_influence_threshold": (
+                    (author_influence_by_id or {}).get(paper.paper_id)
+                ),
             }
             for paper in papers
         ],

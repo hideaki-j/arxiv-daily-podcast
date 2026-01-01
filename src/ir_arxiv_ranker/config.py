@@ -30,6 +30,10 @@ class Settings:
     email_enabled: bool
     arxiv_timeout: int
     openai_timeout: int
+    influence_filter_model: str
+    influence_prompt_path: str
+    influence_score_threshold: int
+    influence_max_workers: int | None
 
 
 def load_config(config_path: Path) -> Settings:
@@ -60,6 +64,12 @@ def load_config(config_path: Path) -> Settings:
     pricing_path = raw_config.get("pricing_path")
     arxiv_timeout = raw_config.get("arxiv_timeout")
     openai_timeout = raw_config.get("openai_timeout")
+    influence_filter_model = raw_config.get("influence_filter_model", "gpt-5-mini-2025-08-07")
+    influence_prompt_path = raw_config.get(
+        "influence_prompt_path", str(Path("prompt") / "prompt_influence_filter.j2")
+    )
+    influence_score_threshold = raw_config.get("influence_score_threshold", 3)
+    influence_max_workers = raw_config.get("influence_max_workers")
 
     if not ranking_model:
         raise SystemExit("Config must include ranking_model")
@@ -98,6 +108,18 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("pricing_path must be set in config")
     if not keywords_path:
         raise SystemExit("keywords_path must be set in config")
+    if not influence_filter_model:
+        raise SystemExit("Config must include influence_filter_model")
+    influence_prompt_file = Path(influence_prompt_path)
+    if not influence_prompt_file.exists():
+        raise SystemExit(f"influence_prompt_path not found: {influence_prompt_file}")
+    if not isinstance(influence_score_threshold, int):
+        raise SystemExit("influence_score_threshold must be an integer")
+    if influence_score_threshold < 0 or influence_score_threshold > 4:
+        raise SystemExit("influence_score_threshold must be between 0 and 4")
+    if influence_max_workers is not None:
+        if not isinstance(influence_max_workers, int) or influence_max_workers < 1:
+            raise SystemExit("influence_max_workers must be an integer >= 1")
 
     if not generate_transcript and use_tts:
         print("use_tts ignored because generate_transcript is false.")
@@ -184,4 +206,8 @@ def load_config(config_path: Path) -> Settings:
         email_enabled=email_enabled,
         arxiv_timeout=arxiv_timeout,
         openai_timeout=openai_timeout,
+        influence_filter_model=influence_filter_model,
+        influence_prompt_path=str(influence_prompt_file),
+        influence_score_threshold=influence_score_threshold,
+        influence_max_workers=influence_max_workers,
     )

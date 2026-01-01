@@ -8,6 +8,9 @@ podcast_model: gpt-5-2025-08-07
 tts_model: gpt-4o-mini-tts-2025-03-20
 tts_voice: marin
 tts_instructions_path: prompt/tts_instructions.txt
+influence_filter_model: gpt-5-mini-2025-08-07
+influence_prompt_path: prompt/prompt_influence_filter.j2
+influence_score_threshold: 3
 compress_to_64kbps: true
 pricing_path: my_config/pricing.json
 ir_limit: 50

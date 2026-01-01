@@ -12,16 +12,16 @@ from .models import Paper
 
 @dataclass(frozen=True)
 class Rankings:
-    automatic_eval_based_ranking: List[str]
-    author_based_ranking: List[str]
+    automatic_eval_ranking: List[str]
+    user_simulator_ranking: List[str]
     final_ranking: List[str]
     tldr_by_id: Dict[str, str]
 
 
 def _validate_rankings(rankings: dict, valid_ids: List[str], top_n: int) -> Dict[str, str]:
     required_keys = {
-        "automatic_eval_based_ranking",
-        "author_based_ranking",
+        "automatic_eval_ranking",
+        "user_simulator_ranking",
         "final_ranking",
         "tldr_list",
     }
@@ -29,7 +29,7 @@ def _validate_rankings(rankings: dict, valid_ids: List[str], top_n: int) -> Dict
         raise ValueError(f"Rankings keys must be {sorted(required_keys)}")
 
     valid_set = set(valid_ids)
-    for key in ("automatic_eval_based_ranking", "author_based_ranking", "final_ranking"):
+    for key in ("automatic_eval_ranking", "user_simulator_ranking", "final_ranking"):
         values = rankings[key]
         if len(values) != top_n:
             raise ValueError(f"{key} must contain exactly {top_n} ids")
@@ -65,17 +65,20 @@ def rank_papers(
     prompt_template: str,
     papers: List[Paper],
     top_n: int,
+    author_influence_by_id: Dict[str, int] | None = None,
     abstract_word_cutoff: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
     openai_timeout: int | None = None,
 ) -> Rankings:
+    author_scores = author_influence_by_id or {}
     papers_payload = []
     for paper in papers:
         payload = paper.prompt_dict()
         if abstract_word_cutoff:
             words = payload["summary"].split()
             payload["summary"] = " ".join(words[:abstract_word_cutoff])
+        payload["author_influence_threshold"] = author_scores.get(paper.paper_id)
         papers_payload.append(payload)
     env = Environment(autoescape=False, undefined=StrictUndefined)
     prompt = env.from_string(prompt_template).render(
@@ -96,8 +99,8 @@ def rank_papers(
     tldr_by_id = _validate_rankings(payload, [paper.paper_id for paper in papers], top_n)
 
     return Rankings(
-        automatic_eval_based_ranking=payload["automatic_eval_based_ranking"],
-        author_based_ranking=payload["author_based_ranking"],
+        automatic_eval_ranking=payload["automatic_eval_ranking"],
+        user_simulator_ranking=payload["user_simulator_ranking"],
         final_ranking=payload["final_ranking"],
         tldr_by_id=tldr_by_id,
     )

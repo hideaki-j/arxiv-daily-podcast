@@ -20,13 +20,13 @@ def build_rankings_response_format(top_n: int) -> dict:
         "schema": {
             "type": "object",
             "properties": {
-                "automatic_eval_based_ranking": {
+                "automatic_eval_ranking": {
                     "type": "array",
                     "items": {"type": "string"},
                     "minItems": top_n,
                     "maxItems": top_n,
                 },
-                "author_based_ranking": {
+                "user_simulator_ranking": {
                     "type": "array",
                     "items": {"type": "string"},
                     "minItems": top_n,
@@ -54,8 +54,8 @@ def build_rankings_response_format(top_n: int) -> dict:
                 },
             },
             "required": [
-                "automatic_eval_based_ranking",
-                "author_based_ranking",
+                "automatic_eval_ranking",
+                "user_simulator_ranking",
                 "final_ranking",
                 "tldr_list",
             ],
@@ -284,3 +284,43 @@ def batch_call_llm_text(
     if show_cost_table:
         print(report.render_psql(f"{label} costs"))
     return [result or "" for result in results]
+
+
+def batch_call_llm_json(
+    client: OpenAI,
+    model: str,
+    prompts: list[str],
+    response_formats: list[dict],
+    timeout: int | None = None,
+    pricing: dict | None = None,
+    cost_tracker: CostTracker | None = None,
+    label: str = "LLM JSON",
+    max_workers: int = 4,
+) -> list[dict]:
+    """Call LLM for multiple JSON prompts in parallel with interactive progress."""
+    if not prompts:
+        return []
+    if len(prompts) != len(response_formats):
+        raise ValueError("prompts and response_formats must have the same length")
+    results: list[dict | None] = [None] * len(prompts)
+    workers = min(max_workers, len(prompts))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(
+                call_llm_json,
+                client,
+                model,
+                prompt,
+                response_format,
+                timeout=timeout,
+                pricing=pricing,
+                cost_tracker=cost_tracker,
+                label=f"{label} {idx + 1}",
+                log_costs=False,
+            ): idx
+            for idx, (prompt, response_format) in enumerate(zip(prompts, response_formats))
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc=label):
+            idx = futures[future]
+            results[idx] = future.result()
+    return [result or {} for result in results]

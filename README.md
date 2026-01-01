@@ -1,6 +1,6 @@
 # ArXiv Dialy Newsletter & Podcast
 
-Daily arXiv newsletter and podcast for automatic evaluation research. Fetches recent cs.IR and cs.CL papers plus keyword-matched papers, ranks them with LLM, generates podcast-style audio summaries, and sends email digests.
+Daily arXiv newsletter and podcast for automatic evaluation research. Fetches recent cs.IR and cs.CL papers plus keyword-matched papers, runs an author-influence pre-filter, ranks the remainder with LLM, generates podcast-style audio summaries, and sends email digests.
 
 ## Vibe Code Alert
 
@@ -35,6 +35,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml
 
 Edit `my_config/config.yaml` to control the run:
 
+- `influence_filter_model`, `influence_score_threshold`: model and minimum score (0–4) for the author-influence gate (keeps papers with scores >= threshold).
 - `ranking_model`, `podcast_model`: main LLMs for ranking and transcripts.
 - `top_n`, `top_n_tts`: how many papers to rank vs. generate audio for.
 - `generate_transcript`, `use_tts`: enable/disable transcripts and mp3 audio.
@@ -59,14 +60,15 @@ More details (full config list, pricing, outputs, structure) are in
 ```mermaid
 flowchart TD
   A["config.yaml<br>+ keywords.yaml<br>+ .env<br/>(__main__.py)"] --> B["Fetch arXiv papers<br/>cs.IR + cs.CL + keywords<br/>(arxiv_client.py)"]
-  B --> C["LLM ranking + TL;DRs<br/>(ranking.py)"]
-  C --> D["Write rankings.csv + results.json<br/>(output.py)"]
-  C --> E["Download top PDFs<br/>(output.py)"]
-  E --> F["LLM transcripts<br/>(podcast.py)"]
-  F --> G["TTS mp3s<br/>(tts.py)"]
-  C --> H["HTML newsletter<br/>(output.py)"]
-  H --> I["Email send (optional)<br/>(emailer.py)"]
-  G --> I
+  B --> C["LLM author influence pre-filter<br/>(influence_filter.py)"]
+  C --> D["LLM ranking + TL;DRs<br/>(ranking.py)"]
+  D --> E["Write rankings.csv + results.json<br/>(output.py)"]
+  D --> F["Download top PDFs<br/>(output.py)"]
+  F --> G["LLM transcripts<br/>(podcast.py)"]
+  G --> H["TTS mp3s<br/>(tts.py)"]
+  D --> I["HTML newsletter<br/>(output.py)"]
+  I --> J["Email send (optional)<br/>(emailer.py)"]
+  H --> J
 ```
 
 Optional steps: transcripts, TTS, and email are controlled by config flags.
@@ -78,7 +80,7 @@ Optional steps: transcripts, TTS, and email are controlled by config flags.
 
 
 **Q. How much does it cost to run?**
-- A. In general, ~$0.50 per run. Details: It depends on the models and how many papers/audio you generate. Costs are tracked during a run and printed at the end; edit `my_config/pricing.json`, `top_n`, `top_n_tts`, and transcript/TTS flags to control spend.
+- A. In general, ~$0.50 per run. Details: It depends on the models and how many papers/audio you generate (the author-influence gate adds an extra LLM pass). Costs are tracked during a run and printed at the end; edit `my_config/pricing.json`, `top_n`, `top_n_tts`, and transcript/TTS flags to control spend.
 
 
 **Q. Can I customize the keywords/retrieval/domain?**
