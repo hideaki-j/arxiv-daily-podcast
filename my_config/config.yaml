@@ -17,8 +17,8 @@ ir_limit: 50
 nlp_limit: 50
 others_limit: 50
 keywords_path: my_config/keywords.yaml
-top_n: 5
-top_n_tts: 5
+top_n: 3
+top_n_tts: 3
 abst_word_cutoff: 200
 transcript_word_cutoff: 1000
 arxiv_timeout: 30

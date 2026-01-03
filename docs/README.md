@@ -45,8 +45,8 @@ Settings in `my_config/config.yaml`:
 | `nlp_limit` | `50` | cs.CL papers to fetch (max 50) |
 | `others_limit` | `50` | Keyword papers to fetch (max 50) |
 | `keywords_path` | `my_config/keywords.yaml` | Path to keywords YAML |
-| `top_n` | `5` | Papers to rank and download |
-| `top_n_tts` | `5` | Papers to generate audio for (<= `top_n`) |
+| `top_n` | `3` | Papers to rank and download |
+| `top_n_tts` | `3` | Papers to generate audio for (<= `top_n`) |
 | `abst_word_cutoff` | `200` | Max abstract words in ranking prompt |
 | `transcript_word_cutoff` | `1000` | Max words from PDF for transcript prompt |
 | `arxiv_timeout` | `30` | arXiv request timeout in seconds |
