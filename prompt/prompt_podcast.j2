@@ -19,11 +19,13 @@ Requirements (keep this order):
 13) Finally, show the future impact by starting with: "Looking ahead, this research could "
 14) Last typical podcast sign-off sentence: "Thanks for riding with the Automatic Evaluation podcast—keep asking great questions, and we'll catch you in the next episode!"
 
-Length: about 3 minutes aloud (roughly 350-450 words).
+Length: about 3 minutes aloud (roughly {% if model and 'gemini' in model.lower() %}500-700{% else %}350-450{% endif %} words).
 Tone: friendly and simple for a general audience. Keep key technical terms, but briefly explain one or two of them in plain language.
 Make sure this is naturally flowing as a spoken podcast script, never use bullet points or lists. Avoid too long sentences, keep it conversational.
 Only use information from the paper text and metadata below, and only from the abstract, introduction, and conclusion.
+{% if model and not 'gemini' in model.lower() %}
 Each sentence's length: less than 20 words.
+{% endif %}
 
 Paper metadata:
 Title: {{ paper.title }}

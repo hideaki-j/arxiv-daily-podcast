@@ -35,11 +35,12 @@ def _truncate_words(text: str, limit: int | None) -> str:
     return " ".join(words[:limit])
 
 
-def _render_prompt(prompt_template: str, paper: Paper, paper_text: str) -> str:
+def _render_prompt(prompt_template: str, paper: Paper, paper_text: str, model: str) -> str:
     env = Environment(autoescape=False, undefined=StrictUndefined)
     return env.from_string(prompt_template).render(
         paper=paper,
         paper_text=paper_text,
+        model=model,
     )
 
 
@@ -56,7 +57,7 @@ def generate_transcript(
     openai_timeout: int | None = None,
 ) -> str:
     paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
-    prompt = _render_prompt(prompt_template, paper, paper_text)
+    prompt = _render_prompt(prompt_template, paper, paper_text, model)
     return call_llm_text(
         client=client,
         model=model,
@@ -84,7 +85,7 @@ def generate_transcripts_batch(
     prompts: list[str] = []
     for paper, pdf_path in zip(papers, pdf_paths):
         paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
-        prompt = _render_prompt(prompt_template, paper, paper_text)
+        prompt = _render_prompt(prompt_template, paper, paper_text, model)
         prompts.append(prompt)
 
     return batch_call_llm_text(
