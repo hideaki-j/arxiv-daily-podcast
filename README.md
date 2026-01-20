@@ -37,6 +37,7 @@ Edit `my_config/config.yaml` to control the run:
 
 - `influence_filter_model`, `influence_score_threshold`: model and minimum score (0–4) for the author-influence gate (keeps papers with scores >= threshold).
 - `ranking_model`, `podcast_model`: main LLMs for ranking and transcripts.
+- `podcast_provider`: set to `openrouter` to use OpenRouter for podcast generation (requires `OPENROUTER_API_KEY` in .env), or leave unset for default (`openai`).
 - `top_n`, `top_n_tts`: how many papers to rank vs. generate audio for.
 - `generate_transcript`, `use_tts`: enable/disable transcripts and mp3 audio.
 - `email_enabled`: enable/disable Gmail delivery.
@@ -76,7 +77,7 @@ Optional steps: transcripts, TTS, and email are controlled by config flags.
 ## FAQ
 
 **Q. Can I use other LLMs?**
-- A. Yes. Swap `ranking_model`, `podcast_model`, and `tts_model` in `my_config/config.yaml` to any supported OpenAI models, and keep `my_config/pricing.json` in sync.
+- A. Yes. Swap `ranking_model`, `podcast_model`, and `tts_model` in `my_config/config.yaml` to any supported OpenAI models, and keep `my_config/pricing.json` in sync. You can also set `podcast_provider: openrouter` to use OpenRouter specifically for the podcast generation.
 
 
 **Q. How much does it cost to run?**

@@ -4,7 +4,8 @@ filter_since_last_schedule: true
 use_tts: true
 
 ranking_model: gpt-5-2025-08-07
-podcast_model: gpt-5-2025-08-07
+podcast_provider: openrouter
+podcast_model: google/gemini-3-pro-preview
 tts_model: gpt-4o-mini-tts-2025-03-20
 tts_voice: marin
 tts_instructions_path: prompt/tts_instructions.txt

@@ -11,6 +11,7 @@ import yaml
 class Settings:
     ranking_model: str
     podcast_model: str
+    podcast_provider: str | None
     tts_model: str | None
     tts_voice: str | None
     tts_instructions: str | None
@@ -45,6 +46,7 @@ def load_config(config_path: Path) -> Settings:
 
     ranking_model = raw_config.get("ranking_model")
     podcast_model = raw_config.get("podcast_model")
+    podcast_provider = raw_config.get("podcast_provider")
     ir_limit = raw_config.get("ir_limit")
     nlp_limit = raw_config.get("nlp_limit")
     others_limit = raw_config.get("others_limit")
@@ -187,6 +189,7 @@ def load_config(config_path: Path) -> Settings:
     return Settings(
         ranking_model=ranking_model,
         podcast_model=podcast_model,
+        podcast_provider=podcast_provider,
         tts_model=tts_model,
         tts_voice=tts_voice,
         tts_instructions=tts_instructions,

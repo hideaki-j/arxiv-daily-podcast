@@ -408,10 +408,26 @@ def main() -> None:
             print("Transcript generation skipped (top_n_tts is 0).")
         else:
             print(f"Generating podcast transcripts for top {len(transcript_ids)} papers...")
+            
+            # Setup podcast client
+            podcast_client = client
+            if settings.podcast_provider == "openrouter":
+                api_key = os.getenv("OPENROUTER_API_KEY")
+                if not api_key:
+                    print("Warning: OPENROUTER_API_KEY not set, trying default client.")
+                else:
+                    print("Using dedicated podcast client (OpenRouter)")
+                    podcast_client = OpenAI(
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key=api_key
+                    )
+            elif settings.podcast_provider and settings.podcast_provider != "openai":
+                print(f"Warning: Unknown podcast_provider '{settings.podcast_provider}', using default client.")
+
             transcript_papers = [papers_by_id[paper_id] for paper_id in transcript_ids]
             transcript_pdf_paths = pdf_paths[: len(transcript_ids)]
             transcripts = generate_transcripts_batch(
-                client=client,
+                client=podcast_client,
                 model=podcast_model,
                 prompt_template=podcast_prompt,
                 papers=transcript_papers,
