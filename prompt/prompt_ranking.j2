@@ -18,6 +18,16 @@ Rules:
   - "id": one of the ids in final_ranking
   - "tldr": ~50 words, plain sentences, no bullets or headings.
 
+Ranking criteria:
+- Filter out papers that are 
+  - visual/multi-modal/audio papers
+  - survey papers
++ Score higher if 
+  + legal domain
+  + financial domain
+  + conversational domain
+  + analysis or discussion of the problem/challenges of the automatic evaluation / user simulation
+
 PAPERS:
 {% for paper in papers %}
 ID: {{ paper.id }}
