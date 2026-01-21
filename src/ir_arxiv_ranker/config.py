@@ -12,6 +12,7 @@ class Settings:
     ranking_model: str
     podcast_model: str
     podcast_provider: str | None
+    tts_provider: str | None
     tts_model: str | None
     tts_voice: str | None
     tts_instructions: str | None
@@ -58,6 +59,7 @@ def load_config(config_path: Path) -> Settings:
     generate_transcript = raw_config.get("generate_transcript", True)
     filter_since_last_schedule = raw_config.get("filter_since_last_schedule", False)
     use_tts = raw_config.get("use_tts", True)
+    tts_provider = raw_config.get("tts_provider")
     tts_model = raw_config.get("tts_model")
     tts_voice = raw_config.get("tts_voice")
     tts_instructions_path = raw_config.get("tts_instructions_path")
@@ -128,10 +130,13 @@ def load_config(config_path: Path) -> Settings:
         use_tts = False
 
     if use_tts:
+        if not tts_provider:
+             raise SystemExit("Config must include tts_provider")
         if not tts_model:
             raise SystemExit("Config must include tts_model")
         if not tts_voice:
             raise SystemExit("Config must include tts_voice")
+            
         if not isinstance(compress_to_64kbps, bool):
             raise SystemExit("compress_to_64kbps must be a boolean")
         if tts_instructions_path:
@@ -149,6 +154,7 @@ def load_config(config_path: Path) -> Settings:
             if not isinstance(tts_instructions, str) or not tts_instructions.strip():
                 raise SystemExit("tts_instructions must be a non-empty string")
     else:
+        tts_provider = None
         tts_model = None
         tts_voice = None
         tts_instructions = None
@@ -190,6 +196,7 @@ def load_config(config_path: Path) -> Settings:
         ranking_model=ranking_model,
         podcast_model=podcast_model,
         podcast_provider=podcast_provider,
+        tts_provider=tts_provider,
         tts_model=tts_model,
         tts_voice=tts_voice,
         tts_instructions=tts_instructions,

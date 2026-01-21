@@ -171,6 +171,7 @@ def main() -> None:
     generate_transcript_flag = settings.generate_transcript
     filter_since_last_schedule = settings.filter_since_last_schedule
     use_tts = settings.use_tts
+    tts_provider = settings.tts_provider
     tts_model = settings.tts_model
     tts_voice = settings.tts_voice
     tts_instructions = settings.tts_instructions
@@ -346,11 +347,8 @@ def main() -> None:
                 format_toronto_time(last_scheduled_time) if last_scheduled_time else "N/A"
             )
             fallback_note = (
-                "Schedule filter based on the last scheduled cron time "
-                f"({schedule_label}) returned {filtered_count} paper(s); "
-                "fell back to the most recent dates "
-                f"({date_span or 'unfiltered range'}) after the author influence gate. "
-                "Note this uses the scheduled time, not necessarily the last successful run."
+                f"Schedule filter ({schedule_label}) found {filtered_count} papers; "
+                f"fell back to recent dates ({date_span or 'unfiltered'}) after influence gate."
             )
         else:
             papers = recent_papers
@@ -452,13 +450,18 @@ def main() -> None:
             for _, transcript, transcript_path in transcript_records[:tts_count]:
                 audio_path = podcast_dir / transcript_path.with_suffix(".mp3").name
                 tts_items.append((transcript, audio_path))
+            primary_config = {
+                "provider": tts_provider,
+                "model": tts_model,
+                "voice": tts_voice,
+                "pricing": tts_pricing,
+            }
+            
             podcast_paths = batch_synthesize_podcast(
                 client=client,
-                model=tts_model,
-                voice=tts_voice,
+                primary_config=primary_config,
                 items=tts_items,
                 timeout=openai_timeout,
-                pricing=tts_pricing,
                 cost_tracker=cost_tracker,
                 instructions=tts_instructions,
                 label="TTS",
