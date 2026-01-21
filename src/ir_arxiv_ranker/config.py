@@ -8,14 +8,25 @@ import yaml
 
 
 @dataclass(frozen=True)
+class LLMCallConfig:
+    provider: str
+    model: str
+
+
+@dataclass(frozen=True)
+class TTSConfig:
+    provider: str
+    model: str
+    voice: str
+
+
+@dataclass(frozen=True)
 class Settings:
-    ranking_model: str
-    podcast_model: str
-    podcast_provider: str | None
-    tts_provider: str | None
-    tts_model: str | None
-    tts_voice: str | None
-    tts_instructions: str | None
+    ranking: LLMCallConfig
+    podcast: LLMCallConfig
+    influence_filter: LLMCallConfig
+    affiliation: LLMCallConfig
+    tts: TTSConfig | None
     compress_to_64kbps: bool
     pricing_data: dict
     ir_limit: int
@@ -32,10 +43,35 @@ class Settings:
     email_enabled: bool
     arxiv_timeout: int
     openai_timeout: int
-    influence_filter_model: str
-    influence_prompt_path: str
     influence_score_threshold: int
     influence_max_workers: int | None
+
+
+def _parse_llm_call_config(raw: dict | None, name: str) -> LLMCallConfig:
+    if not raw or not isinstance(raw, dict):
+        raise SystemExit(f"Config must include '{name}' section with provider and model")
+    provider = raw.get("provider")
+    model = raw.get("model")
+    if not provider or not isinstance(provider, str):
+        raise SystemExit(f"{name}.provider must be a non-empty string")
+    if not model or not isinstance(model, str):
+        raise SystemExit(f"{name}.model must be a non-empty string")
+    return LLMCallConfig(provider=provider, model=model)
+
+
+def _parse_tts_config(raw: dict | None) -> TTSConfig:
+    if not raw or not isinstance(raw, dict):
+        raise SystemExit("Config must include 'tts' section with provider, model, and voice")
+    provider = raw.get("provider")
+    model = raw.get("model")
+    voice = raw.get("voice")
+    if not provider or not isinstance(provider, str):
+        raise SystemExit("tts.provider must be a non-empty string")
+    if not model or not isinstance(model, str):
+        raise SystemExit("tts.model must be a non-empty string")
+    if not voice or not isinstance(voice, str):
+        raise SystemExit("tts.voice must be a non-empty string")
+    return TTSConfig(provider=provider, model=model, voice=voice)
 
 
 def load_config(config_path: Path) -> Settings:
@@ -45,9 +81,13 @@ def load_config(config_path: Path) -> Settings:
     if not isinstance(raw_config, dict):
         raise SystemExit("Config file must contain a YAML object at the top level.")
 
-    ranking_model = raw_config.get("ranking_model")
-    podcast_model = raw_config.get("podcast_model")
-    podcast_provider = raw_config.get("podcast_provider")
+    # Parse LLM call configs
+    ranking = _parse_llm_call_config(raw_config.get("ranking"), "ranking")
+    podcast = _parse_llm_call_config(raw_config.get("podcast"), "podcast")
+    influence_filter = _parse_llm_call_config(raw_config.get("influence_filter"), "influence_filter")
+    affiliation = _parse_llm_call_config(raw_config.get("affiliation"), "affiliation")
+
+    # Parse other settings
     ir_limit = raw_config.get("ir_limit")
     nlp_limit = raw_config.get("nlp_limit")
     others_limit = raw_config.get("others_limit")
@@ -59,32 +99,27 @@ def load_config(config_path: Path) -> Settings:
     generate_transcript = raw_config.get("generate_transcript", True)
     filter_since_last_schedule = raw_config.get("filter_since_last_schedule", False)
     use_tts = raw_config.get("use_tts", True)
-    tts_provider = raw_config.get("tts_provider")
-    tts_model = raw_config.get("tts_model")
-    tts_voice = raw_config.get("tts_voice")
-    tts_instructions_path = raw_config.get("tts_instructions_path")
     compress_to_64kbps = raw_config.get("compress_to_64kbps", True)
     email_enabled = raw_config.get("email_enabled", False)
     pricing_path = raw_config.get("pricing_path")
     arxiv_timeout = raw_config.get("arxiv_timeout")
     openai_timeout = raw_config.get("openai_timeout")
-    influence_filter_model = raw_config.get("influence_filter_model", "gpt-5-mini-2025-08-07")
-    influence_prompt_path = raw_config.get(
-        "influence_prompt_path", str(Path("prompt") / "prompt_influence_filter.j2")
-    )
     influence_score_threshold = raw_config.get("influence_score_threshold", 3)
     influence_max_workers = raw_config.get("influence_max_workers")
 
-    if not ranking_model:
-        raise SystemExit("Config must include ranking_model")
-    if not podcast_model:
-        raise SystemExit("Config must include podcast_model")
+    # Validate boolean settings
     if not isinstance(use_tts, bool):
         raise SystemExit("use_tts must be a boolean")
     if not isinstance(filter_since_last_schedule, bool):
         raise SystemExit("filter_since_last_schedule must be a boolean")
     if not isinstance(email_enabled, bool):
         raise SystemExit("email_enabled must be a boolean")
+    if not isinstance(generate_transcript, bool):
+        raise SystemExit("generate_transcript must be a boolean")
+    if not isinstance(compress_to_64kbps, bool):
+        raise SystemExit("compress_to_64kbps must be a boolean")
+
+    # Validate integer settings
     if not isinstance(ir_limit, int) or ir_limit < 1:
         raise SystemExit("ir_limit must be an integer >= 1")
     if not isinstance(nlp_limit, int) or nlp_limit < 1:
@@ -102,21 +137,10 @@ def load_config(config_path: Path) -> Settings:
     if transcript_word_cutoff is not None:
         if not isinstance(transcript_word_cutoff, int) or transcript_word_cutoff < 1:
             raise SystemExit("transcript_word_cutoff must be an integer >= 1")
-    if not isinstance(generate_transcript, bool):
-        raise SystemExit("generate_transcript must be a boolean")
     if not isinstance(arxiv_timeout, int) or arxiv_timeout < 1:
         raise SystemExit("arxiv_timeout must be an integer >= 1")
     if not isinstance(openai_timeout, int) or openai_timeout < 1:
         raise SystemExit("openai_timeout must be an integer >= 1")
-    if not pricing_path:
-        raise SystemExit("pricing_path must be set in config")
-    if not keywords_path:
-        raise SystemExit("keywords_path must be set in config")
-    if not influence_filter_model:
-        raise SystemExit("Config must include influence_filter_model")
-    influence_prompt_file = Path(influence_prompt_path)
-    if not influence_prompt_file.exists():
-        raise SystemExit(f"influence_prompt_path not found: {influence_prompt_file}")
     if not isinstance(influence_score_threshold, int):
         raise SystemExit("influence_score_threshold must be an integer")
     if influence_score_threshold < 0 or influence_score_threshold > 4:
@@ -125,42 +149,22 @@ def load_config(config_path: Path) -> Settings:
         if not isinstance(influence_max_workers, int) or influence_max_workers < 1:
             raise SystemExit("influence_max_workers must be an integer >= 1")
 
+    # Validate required paths
+    if not pricing_path:
+        raise SystemExit("pricing_path must be set in config")
+    if not keywords_path:
+        raise SystemExit("keywords_path must be set in config")
+
+    # Handle TTS settings
     if not generate_transcript and use_tts:
         print("use_tts ignored because generate_transcript is false.")
         use_tts = False
 
+    tts: TTSConfig | None = None
     if use_tts:
-        if not tts_provider:
-             raise SystemExit("Config must include tts_provider")
-        if not tts_model:
-            raise SystemExit("Config must include tts_model")
-        if not tts_voice:
-            raise SystemExit("Config must include tts_voice")
-            
-        if not isinstance(compress_to_64kbps, bool):
-            raise SystemExit("compress_to_64kbps must be a boolean")
-        if tts_instructions_path:
-            tts_file = Path(tts_instructions_path)
-            if not tts_file.exists():
-                raise SystemExit(f"TTS instructions file not found: {tts_file}")
-            tts_instructions = tts_file.read_text().strip()
-            if not tts_instructions:
-                raise SystemExit("tts_instructions_path must point to non-empty text")
-        else:
-            tts_instructions = raw_config.get(
-                "tts_instructions",
-                "Energetic, upbeat podcast host tone. Friendly and engaging, clear enunciation.",
-            )
-            if not isinstance(tts_instructions, str) or not tts_instructions.strip():
-                raise SystemExit("tts_instructions must be a non-empty string")
-    else:
-        tts_provider = None
-        tts_model = None
-        tts_voice = None
-        tts_instructions = None
-        if not isinstance(compress_to_64kbps, bool):
-            raise SystemExit("compress_to_64kbps must be a boolean")
+        tts = _parse_tts_config(raw_config.get("tts"))
 
+    # Load pricing data
     pricing_file = Path(pricing_path)
     if not pricing_file.exists():
         raise SystemExit(f"Pricing file not found: {pricing_file}")
@@ -173,11 +177,14 @@ def load_config(config_path: Path) -> Settings:
         if not isinstance(pricing, dict):
             raise SystemExit(f"pricing.{model_name} must be a mapping")
         for key, value in pricing.items():
+            if key == "provider":
+                continue
             if value is None:
                 continue
             if not isinstance(value, (int, float)) or value < 0:
                 raise SystemExit(f"pricing.{model_name}.{key} must be >= 0")
 
+    # Load keywords
     keywords_file = Path(keywords_path)
     if not keywords_file.exists():
         raise SystemExit(f"Keywords file not found: {keywords_file}")
@@ -193,13 +200,11 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("Keywords list is empty.")
 
     return Settings(
-        ranking_model=ranking_model,
-        podcast_model=podcast_model,
-        podcast_provider=podcast_provider,
-        tts_provider=tts_provider,
-        tts_model=tts_model,
-        tts_voice=tts_voice,
-        tts_instructions=tts_instructions,
+        ranking=ranking,
+        podcast=podcast,
+        influence_filter=influence_filter,
+        affiliation=affiliation,
+        tts=tts,
         compress_to_64kbps=compress_to_64kbps,
         pricing_data=pricing_data,
         ir_limit=ir_limit,
@@ -216,8 +221,6 @@ def load_config(config_path: Path) -> Settings:
         email_enabled=email_enabled,
         arxiv_timeout=arxiv_timeout,
         openai_timeout=openai_timeout,
-        influence_filter_model=influence_filter_model,
-        influence_prompt_path=str(influence_prompt_file),
         influence_score_threshold=influence_score_threshold,
         influence_max_workers=influence_max_workers,
     )

@@ -61,6 +61,7 @@ def filter_by_author_influence(
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
     openai_timeout: int | None = None,
+    provider: str = "openai",
 ) -> InfluenceResult:
     if threshold < INFLUENCE_SCORE_MIN or threshold > INFLUENCE_SCORE_MAX:
         raise ValueError(
@@ -100,6 +101,7 @@ def filter_by_author_influence(
         cost_tracker=cost_tracker,
         label="Author influence filter",
         max_workers=effective_max_workers,
+        provider=provider,
     )
 
     # Extract scores from responses

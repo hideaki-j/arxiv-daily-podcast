@@ -1,20 +1,32 @@
+# Feature flags
 email_enabled: true
 generate_transcript: true
 filter_since_last_schedule: true
 use_tts: true
 
-ranking_model: gpt-5-2025-08-07
-podcast_provider: openrouter
-podcast_model: google/gemini-3-pro-preview
-tts_instructions_path: prompt/tts_instructions.txt
+# LLM Call Configurations
+influence_filter:
+  provider: openai
+  model: gpt-5-mini-2025-08-07
 
-tts_provider: gemini
-tts_model: gemini-2.5-flash-preview-tts
-tts_voice: Zephyr
+ranking:
+  provider: openai
+  model: gpt-5-2025-08-07
 
-influence_filter_model: gpt-5-mini-2025-08-07
-influence_prompt_path: prompt/prompt_influence_filter.j2
-influence_score_threshold: 3
+podcast:
+  provider: gemini
+  model: gemini-3-pro-preview
+
+tts:
+  provider: gemini
+  model: gemini-2.5-flash-preview-tts
+  voice: Zephyr
+
+affiliation:
+  provider: gemini
+  model: gemini-3-flash-preview
+
+# Other settings
 compress_to_64kbps: true
 pricing_path: my_config/pricing.json
 ir_limit: 50
@@ -27,3 +39,4 @@ abst_word_cutoff: 200
 transcript_word_cutoff: 1000
 arxiv_timeout: 30
 openai_timeout: 180
+influence_score_threshold: 3

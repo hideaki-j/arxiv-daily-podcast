@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
+from google import genai
 from jinja2 import Environment, StrictUndefined
 from openai import OpenAI
 
@@ -37,7 +38,8 @@ DEFAULT_PROMPT_PATH = Path("prompt") / "prompt_ranking.j2"
 DEFAULT_PODCAST_PROMPT_PATH = Path("prompt") / "prompt_podcast.j2"
 DEFAULT_NEWSLETTER_TEMPLATE = Path("template") / "newsletter.j2"
 DEFAULT_WORKFLOW_PATH = Path(".github") / "workflows" / "arxiv-newsletter.yml"
-AFFILIATION_MODEL = "gpt-5-mini-2025-08-07"
+DEFAULT_INFLUENCE_PROMPT_PATH = Path("prompt") / "prompt_influence_filter.j2"
+DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
 AFFILIATION_TOKEN_LIMIT = 200
 
 
@@ -50,6 +52,14 @@ def _parse_args() -> argparse.Namespace:
         help="Path to YAML config file",
     )
     return parser.parse_args()
+
+
+def _load_tts_instructions() -> str:
+    if DEFAULT_TTS_INSTRUCTIONS_PATH.exists():
+        content = DEFAULT_TTS_INSTRUCTIONS_PATH.read_text().strip()
+        if content:
+            return content
+    return "Energetic, upbeat podcast host tone. Friendly and engaging, clear enunciation."
 
 
 def _trim_attachments_by_size(attachments: list[Path], max_total_bytes: int) -> list[Path]:
@@ -158,8 +168,12 @@ def main() -> None:
     settings = load_config(args.config)
     cost_tracker = CostTracker()
 
-    ranking_model = settings.ranking_model
-    podcast_model = settings.podcast_model
+    ranking_model = settings.ranking.model
+    ranking_provider = settings.ranking.provider
+    podcast_model = settings.podcast.model
+    podcast_provider = settings.podcast.provider
+    influence_filter_model = settings.influence_filter.model
+    affiliation_model = settings.affiliation.model
     ir_limit = settings.ir_limit
     nlp_limit = settings.nlp_limit
     others_limit = settings.others_limit
@@ -171,15 +185,13 @@ def main() -> None:
     generate_transcript_flag = settings.generate_transcript
     filter_since_last_schedule = settings.filter_since_last_schedule
     use_tts = settings.use_tts
-    tts_provider = settings.tts_provider
-    tts_model = settings.tts_model
-    tts_voice = settings.tts_voice
-    tts_instructions = settings.tts_instructions
+    tts_provider = settings.tts.provider if settings.tts else None
+    tts_model = settings.tts.model if settings.tts else None
+    tts_voice = settings.tts.voice if settings.tts else None
     compress_to_64kbps = settings.compress_to_64kbps
     email_enabled = settings.email_enabled
     pricing_data = settings.pricing_data
-    influence_filter_model = settings.influence_filter_model
-    influence_prompt_path = Path(settings.influence_prompt_path)
+    influence_prompt_path = DEFAULT_INFLUENCE_PROMPT_PATH
     influence_score_threshold = settings.influence_score_threshold
     influence_max_workers = settings.influence_max_workers
     arxiv_timeout = settings.arxiv_timeout
@@ -188,9 +200,9 @@ def main() -> None:
     gmail_password = None
     ranking_pricing = pricing_data.get(ranking_model, {}) or {}
     podcast_pricing = pricing_data.get(podcast_model, {}) or {}
-    tts_pricing = pricing_data.get(tts_model, {}) or {}
+    tts_pricing = pricing_data.get(tts_model, {}) or {} if tts_model else {}
     influence_pricing = pricing_data.get(influence_filter_model, {}) or {}
-    affiliation_pricing = pricing_data.get(AFFILIATION_MODEL, {}) or {}
+    affiliation_pricing = pricing_data.get(affiliation_model, {}) or {}
 
     if email_enabled:
         gmail_address = os.getenv("GMAIL_ADDRESS")
@@ -291,13 +303,29 @@ def main() -> None:
     prompt_template = DEFAULT_PROMPT_PATH.read_text()
     influence_prompt_template = influence_prompt_path.read_text()
 
-    client = OpenAI()
+    # Create clients based on provider
+    openai_client = OpenAI()
+    gemini_client = None
+    influence_provider = settings.influence_filter.provider
+    ranking_provider = settings.ranking.provider
+    affiliation_provider = settings.affiliation.provider
+
+    if influence_provider == "gemini" or ranking_provider == "gemini" or affiliation_provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise SystemExit("GEMINI_API_KEY or GOOGLE_API_KEY must be set for Gemini provider")
+        gemini_client = genai.Client(api_key=api_key)
+
+    influence_client = gemini_client if influence_provider == "gemini" else openai_client
+    ranking_client = gemini_client if ranking_provider == "gemini" else openai_client
+    affiliation_client = gemini_client if affiliation_provider == "gemini" else openai_client
+    podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
 
     # Stage 1: fetch without date filtering, then gate by author influence
     papers, _ = fetch_all(None)
     fetched_count = len(papers)
     influence_result = filter_by_author_influence(
-        client=client,
+        client=influence_client,
         model=influence_filter_model,
         prompt_template=influence_prompt_template,
         papers=papers,
@@ -306,6 +334,7 @@ def main() -> None:
         pricing=influence_pricing,
         cost_tracker=cost_tracker,
         openai_timeout=openai_timeout,
+        provider=influence_provider,
     )
     author_influence_by_id = influence_result.scores_by_id
     papers = influence_result.kept_papers
@@ -363,7 +392,7 @@ def main() -> None:
 
     print("Ranking papers with LLM...")
     rankings = rank_papers(
-        client=client,
+        client=ranking_client,
         model=ranking_model,
         prompt_template=prompt_template,
         papers=papers,
@@ -373,6 +402,7 @@ def main() -> None:
         pricing=ranking_pricing,
         cost_tracker=cost_tracker,
         openai_timeout=openai_timeout,
+        provider=ranking_provider,
     )
     print("Ranking complete.")
 
@@ -408,8 +438,7 @@ def main() -> None:
             print(f"Generating podcast transcripts for top {len(transcript_ids)} papers...")
             
             # Setup podcast client
-            podcast_client = client
-            if settings.podcast_provider == "openrouter":
+            if podcast_provider == "openrouter":
                 api_key = os.getenv("OPENROUTER_API_KEY")
                 if not api_key:
                     print("Warning: OPENROUTER_API_KEY not set, trying default client.")
@@ -419,8 +448,8 @@ def main() -> None:
                         base_url="https://openrouter.ai/api/v1",
                         api_key=api_key
                     )
-            elif settings.podcast_provider and settings.podcast_provider != "openai":
-                print(f"Warning: Unknown podcast_provider '{settings.podcast_provider}', using default client.")
+            elif podcast_provider and podcast_provider != "openai" and podcast_provider != "gemini":
+                print(f"Warning: Unknown podcast_provider '{podcast_provider}', using default client.")
 
             transcript_papers = [papers_by_id[paper_id] for paper_id in transcript_ids]
             transcript_pdf_paths = pdf_paths[: len(transcript_ids)]
@@ -436,6 +465,7 @@ def main() -> None:
                 label="Transcript LLM",
                 openai_timeout=openai_timeout,
                 max_workers=min(4, len(transcript_papers)),
+                provider=podcast_provider,
             )
             for rank, (paper, transcript) in enumerate(
                 zip(transcript_papers, transcripts), start=1
@@ -458,12 +488,12 @@ def main() -> None:
             }
             
             podcast_paths = batch_synthesize_podcast(
-                client=client,
+                client=openai_client,
                 primary_config=primary_config,
                 items=tts_items,
                 timeout=openai_timeout,
                 cost_tracker=cost_tracker,
-                instructions=tts_instructions,
+                instructions=_load_tts_instructions(),
                 label="TTS",
                 max_workers=min(4, len(tts_items)),
                 compress_to_64kbps=compress_to_64kbps,
@@ -478,8 +508,8 @@ def main() -> None:
         print("Extracting affiliations for email...")
         aff_papers = [papers_by_id[paper_id] for paper_id in rankings.final_ranking]
         affiliations_by_id = extract_affiliations_batch(
-            client=client,
-            model=AFFILIATION_MODEL,
+            client=affiliation_client,
+            model=affiliation_model,
             papers=aff_papers,
             pdf_paths=pdf_paths,
             pricing=affiliation_pricing,
@@ -487,6 +517,7 @@ def main() -> None:
             token_limit=AFFILIATION_TOKEN_LIMIT,
             openai_timeout=openai_timeout,
             max_workers=min(4, len(rankings.final_ranking)),
+            provider=affiliation_provider,
         )
 
         stats_line = (

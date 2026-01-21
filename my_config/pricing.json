@@ -1,25 +1,42 @@
 {
   "gpt-5-2025-08-07": {
+    "provider": "openai",
     "input_usd_per_1m_tokens": 1.25,
     "cached_input_usd_per_1m_tokens": 0.125,
     "output_usd_per_1m_tokens": 10.0
   },
   "gpt-5-mini-2025-08-07": {
+    "provider": "openai",
     "input_usd_per_1m_tokens": 0.25,
     "cached_input_usd_per_1m_tokens": 0.025,
     "output_usd_per_1m_tokens": 2.0
   },
   "gpt-4o-mini-tts-2025-03-20": {
+    "provider": "openai",
     "input_usd_per_1m_text_tokens": 0.6,
     "output_usd_per_1m_audio_tokens": 12.0,
     "estimated_usd_per_minute": 0.015
   },
   "google/gemini-3-pro-preview": {
+    "provider": "openrouter",
     "input_usd_per_1m_tokens": 2.0,
     "cached_input_usd_per_1m_tokens": 0.2,
     "output_usd_per_1m_tokens": 12.0
   },
+  "gemini-3-pro-preview": {
+    "provider": "gemini",
+    "input_usd_per_1m_tokens": 2.0,
+    "cached_input_usd_per_1m_tokens": 0.2,
+    "output_usd_per_1m_tokens": 12.0
+  },
+  "gemini-3-flash-preview": {
+    "provider": "gemini",
+    "input_usd_per_1m_tokens": 0.5,
+    "cached_input_usd_per_1m_tokens": 0.05,
+    "output_usd_per_1m_tokens": 3.0
+  },
   "gemini-2.5-flash-preview-tts": {
+    "provider": "gemini",
     "input_usd_per_1m_text_tokens": 0.5,
     "output_usd_per_1m_audio_tokens": 10.0
   }

@@ -70,6 +70,7 @@ def rank_papers(
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
     openai_timeout: int | None = None,
+    provider: str = "openai",
 ) -> Rankings:
     author_scores = author_influence_by_id or {}
     papers_payload = []
@@ -95,6 +96,7 @@ def rank_papers(
         cost_tracker=cost_tracker,
         label="Ranking LLM",
         timeout=openai_timeout,
+        provider=provider,
     )
     tldr_by_id = _validate_rankings(payload, [paper.paper_id for paper in papers], top_n)
 

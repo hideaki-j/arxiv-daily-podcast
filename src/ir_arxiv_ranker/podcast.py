@@ -55,6 +55,7 @@ def generate_transcript(
     cost_tracker: CostTracker | None = None,
     label: str = "Podcast LLM",
     openai_timeout: int | None = None,
+    provider: str = "openai",
 ) -> str:
     paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
     prompt = _render_prompt(prompt_template, paper, paper_text, model)
@@ -66,6 +67,7 @@ def generate_transcript(
         cost_tracker=cost_tracker,
         label=label,
         timeout=openai_timeout,
+        provider=provider,
     )
 
 
@@ -81,6 +83,7 @@ def generate_transcripts_batch(
     label: str = "Podcast LLM",
     openai_timeout: int | None = None,
     max_workers: int = 4,
+    provider: str = "openai",
 ) -> list[str]:
     prompts: list[str] = []
     for paper, pdf_path in zip(papers, pdf_paths):
@@ -97,6 +100,7 @@ def generate_transcripts_batch(
         cost_tracker=cost_tracker,
         label=label,
         max_workers=max_workers,
+        provider=provider,
     )
 
 

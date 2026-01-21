@@ -67,6 +67,7 @@ def extract_affiliations_batch(
     token_limit: int = 200,
     openai_timeout: int | None = None,
     max_workers: int = 4,
+    provider: str = "openai",
 ) -> dict[str, str]:
     prompts: list[str] = []
     for paper, pdf_path in zip(papers, pdf_paths):
@@ -92,5 +93,6 @@ def extract_affiliations_batch(
         cost_tracker=cost_tracker,
         label="Affiliations",
         max_workers=max_workers,
+        provider=provider,
     )
     return {paper.paper_id: output.strip() for paper, output in zip(papers, outputs)}

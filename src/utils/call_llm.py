@@ -4,12 +4,46 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
+from google import genai
 from openai import APITimeoutError, APIConnectionError, OpenAI
 from tqdm import tqdm
 
 from .costs import CostReport, CostTracker
 
 DEFAULT_MAX_RETRIES = 2
+
+
+def _convert_openai_schema_to_gemini(response_format: dict) -> dict:
+    """Convert OpenAI-style response format to Gemini's response_json_schema."""
+    return response_format.get("schema", response_format)
+
+
+def _extract_gemini_json_payload(response) -> dict:
+    """Extract JSON payload from Gemini response."""
+    text = response.text
+    if not text:
+        raise ValueError("No text payload found in Gemini response.")
+    return json.loads(text)
+
+
+def _extract_gemini_usage(response) -> dict | None:
+    """Extract usage information from Gemini response."""
+    usage = getattr(response, "usage_metadata", None)
+    if not usage:
+        return None
+    input_tokens = getattr(usage, "prompt_token_count", None)
+    output_tokens = getattr(usage, "candidates_token_count", None)
+    if input_tokens is None:
+        raise ValueError("Gemini response missing prompt_token_count in usage_metadata")
+    if output_tokens is None:
+        raise ValueError("Gemini response missing candidates_token_count in usage_metadata")
+    cached_tokens = getattr(usage, "cached_content_token_count", 0) or 0
+    return {
+        "input_tokens": input_tokens,
+        "cached_tokens": cached_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+    }
 
 
 def build_rankings_response_format(top_n: int) -> dict:
@@ -155,7 +189,7 @@ def _log_cost(label: str, usage: dict | None, cost: float | None) -> None:
 
 
 def call_llm_json(
-    client: OpenAI,
+    client: OpenAI | genai.Client,
     model: str,
     prompt: str,
     response_format: dict,
@@ -166,7 +200,21 @@ def call_llm_json(
     label: str = "LLM JSON",
     log_costs: bool = True,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    provider: str = "openai",
 ) -> dict:
+    if provider == "gemini":
+        return _call_gemini_json(
+            client=client,
+            model=model,
+            prompt=prompt,
+            response_format=response_format,
+            pricing=pricing,
+            cost_tracker=cost_tracker,
+            cost_report=cost_report,
+            label=label,
+            log_costs=log_costs,
+            max_retries=max_retries,
+        )
     attempt = 0
     while True:
         try:
@@ -193,6 +241,51 @@ def call_llm_json(
             time.sleep(2**attempt)
 
 
+def _call_gemini_json(
+    client: genai.Client,
+    model: str,
+    prompt: str,
+    response_format: dict,
+    pricing: dict | None = None,
+    cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
+    label: str = "LLM JSON",
+    log_costs: bool = True,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> dict:
+    """Call Gemini API with structured JSON output."""
+    gemini_schema = _convert_openai_schema_to_gemini(response_format)
+    attempt = 0
+    while True:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": gemini_schema,
+                },
+            )
+            payload = _extract_gemini_json_payload(response)
+            usage = _extract_gemini_usage(response)
+            cost = _estimate_cost(usage, pricing)
+            if log_costs:
+                _log_cost(label, usage, cost)
+            if cost_tracker is not None:
+                cost_tracker.add(cost)
+            if cost_report is not None:
+                cost_report.add(label, cost, _usage_detail(usage))
+            return payload
+        except Exception as e:
+            if "timeout" in str(e).lower() or "connection" in str(e).lower():
+                attempt += 1
+                if attempt > max_retries:
+                    raise
+                time.sleep(2**attempt)
+            else:
+                raise
+
+
 def _extract_text_payload(response) -> str:
     if hasattr(response, "output"):
         for item in response.output:
@@ -208,8 +301,16 @@ def _extract_text_payload(response) -> str:
     raise ValueError("No text payload found in response.")
 
 
+def _extract_gemini_text_payload(response) -> str:
+    """Extract text payload from Gemini response."""
+    text = response.text
+    if not text:
+        raise ValueError("No text payload found in Gemini response.")
+    return text
+
+
 def call_llm_text(
-    client: OpenAI,
+    client: OpenAI | genai.Client,
     model: str,
     prompt: str,
     timeout: int | None = None,
@@ -219,7 +320,20 @@ def call_llm_text(
     label: str = "LLM Text",
     log_costs: bool = True,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    provider: str = "openai",
 ) -> str:
+    if provider == "gemini":
+        return _call_gemini_text(
+            client=client,
+            model=model,
+            prompt=prompt,
+            pricing=pricing,
+            cost_tracker=cost_tracker,
+            cost_report=cost_report,
+            label=label,
+            log_costs=log_costs,
+            max_retries=max_retries,
+        )
     attempt = 0
     while True:
         try:
@@ -245,8 +359,47 @@ def call_llm_text(
             time.sleep(2**attempt)
 
 
+def _call_gemini_text(
+    client: genai.Client,
+    model: str,
+    prompt: str,
+    pricing: dict | None = None,
+    cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
+    label: str = "LLM Text",
+    log_costs: bool = True,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+) -> str:
+    """Call Gemini API for text output."""
+    attempt = 0
+    while True:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+            )
+            text = _extract_gemini_text_payload(response)
+            usage = _extract_gemini_usage(response)
+            cost = _estimate_cost(usage, pricing)
+            if log_costs:
+                _log_cost(label, usage, cost)
+            if cost_tracker is not None:
+                cost_tracker.add(cost)
+            if cost_report is not None:
+                cost_report.add(label, cost, _usage_detail(usage))
+            return text
+        except Exception as e:
+            if "timeout" in str(e).lower() or "connection" in str(e).lower():
+                attempt += 1
+                if attempt > max_retries:
+                    raise
+                time.sleep(2**attempt)
+            else:
+                raise
+
+
 def batch_call_llm_text(
-    client: OpenAI,
+    client: OpenAI | genai.Client,
     model: str,
     prompts: list[str],
     timeout: int | None = None,
@@ -256,6 +409,7 @@ def batch_call_llm_text(
     label: str = "LLM Text",
     max_workers: int = 4,
     show_cost_table: bool = True,
+    provider: str = "openai",
 ) -> list[str]:
     if not prompts:
         return []
@@ -275,6 +429,7 @@ def batch_call_llm_text(
                 cost_report=report,
                 label=f"{label} {idx + 1}",
                 log_costs=False,
+                provider=provider,
             ): idx
             for idx, prompt in enumerate(prompts)
         }
@@ -287,7 +442,7 @@ def batch_call_llm_text(
 
 
 def batch_call_llm_json(
-    client: OpenAI,
+    client: OpenAI | genai.Client,
     model: str,
     prompts: list[str],
     response_formats: list[dict],
@@ -296,6 +451,7 @@ def batch_call_llm_json(
     cost_tracker: CostTracker | None = None,
     label: str = "LLM JSON",
     max_workers: int = 4,
+    provider: str = "openai",
 ) -> list[dict]:
     """Call LLM for multiple JSON prompts in parallel with interactive progress."""
     if not prompts:
@@ -317,6 +473,7 @@ def batch_call_llm_json(
                 cost_tracker=cost_tracker,
                 label=f"{label} {idx + 1}",
                 log_costs=False,
+                provider=provider,
             ): idx
             for idx, (prompt, response_format) in enumerate(zip(prompts, response_formats))
         }
@@ -324,3 +481,4 @@ def batch_call_llm_json(
             idx = futures[future]
             results[idx] = future.result()
     return [result or {} for result in results]
+
