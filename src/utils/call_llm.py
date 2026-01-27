@@ -276,6 +276,11 @@ def _call_gemini_json(
             if cost_report is not None:
                 cost_report.add(label, cost, _usage_detail(usage))
             return payload
+        except (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectError):
+            attempt += 1
+            if attempt > max_retries:
+                raise
+            time.sleep(2**attempt)
         except Exception as e:
             if "timeout" in str(e).lower() or "connection" in str(e).lower():
                 attempt += 1
@@ -388,6 +393,11 @@ def _call_gemini_text(
             if cost_report is not None:
                 cost_report.add(label, cost, _usage_detail(usage))
             return text
+        except (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectError):
+            attempt += 1
+            if attempt > max_retries:
+                raise
+            time.sleep(2**attempt)
         except Exception as e:
             if "timeout" in str(e).lower() or "connection" in str(e).lower():
                 attempt += 1
