@@ -71,6 +71,7 @@ def rank_papers(
     cost_tracker: CostTracker | None = None,
     openai_timeout: int | None = None,
     provider: str = "openai",
+    include_keyword_papers: bool = True,
 ) -> Rankings:
     author_scores = author_influence_by_id or {}
     papers_payload = []
@@ -85,6 +86,7 @@ def rank_papers(
     prompt = env.from_string(prompt_template).render(
         top_n=top_n,
         papers=papers_payload,
+        include_keyword_papers=include_keyword_papers,
     )
 
     payload = call_llm_json(

@@ -33,6 +33,7 @@ class Settings:
     nlp_limit: int
     others_limit: int
     keywords: list[str]
+    include_keyword_papers: bool
     top_n: int
     top_n_tts: int
     abst_word_cutoff: int
@@ -99,6 +100,7 @@ def load_config(config_path: Path) -> Settings:
     generate_transcript = raw_config.get("generate_transcript", True)
     filter_since_last_schedule = raw_config.get("filter_since_last_schedule", False)
     use_tts = raw_config.get("use_tts", True)
+    include_keyword_papers = raw_config.get("include_keyword_papers", True)
     compress_to_64kbps = raw_config.get("compress_to_64kbps", True)
     email_enabled = raw_config.get("email_enabled", False)
     pricing_path = raw_config.get("pricing_path")
@@ -118,6 +120,8 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("generate_transcript must be a boolean")
     if not isinstance(compress_to_64kbps, bool):
         raise SystemExit("compress_to_64kbps must be a boolean")
+    if not isinstance(include_keyword_papers, bool):
+        raise SystemExit("include_keyword_papers must be a boolean")
 
     # Validate integer settings
     if not isinstance(ir_limit, int) or ir_limit < 1:
@@ -211,6 +215,7 @@ def load_config(config_path: Path) -> Settings:
         nlp_limit=nlp_limit,
         others_limit=others_limit,
         keywords=keywords,
+        include_keyword_papers=include_keyword_papers,
         top_n=top_n,
         top_n_tts=top_n_tts,
         abst_word_cutoff=abst_word_cutoff,

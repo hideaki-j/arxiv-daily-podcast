@@ -178,6 +178,7 @@ def main() -> None:
     nlp_limit = settings.nlp_limit
     others_limit = settings.others_limit
     keywords = settings.keywords
+    include_keyword_papers = settings.include_keyword_papers
     top_n = settings.top_n
     top_n_tts = settings.top_n_tts
     abst_word_cutoff = settings.abst_word_cutoff
@@ -248,12 +249,18 @@ def main() -> None:
     if capped_others_limit != others_limit:
         print(f"Capping others_limit to {MAX_LIMIT}")
 
-    def fetch_all(updated_after_value: datetime | None) -> tuple[list, dict[str, int]]:
-        print(
-            "Fetching up to "
-            f"{capped_ir_limit} cs.IR, {capped_nlp_limit} cs.CL, "
-            f"and {capped_others_limit} keyword-matched papers from arXiv..."
-        )
+    def fetch_all(updated_after_value: datetime | None, include_keywords: bool = True) -> tuple[list, dict[str, int]]:
+        if include_keywords:
+            print(
+                "Fetching up to "
+                f"{capped_ir_limit} cs.IR, {capped_nlp_limit} cs.CL, "
+                f"and {capped_others_limit} keyword-matched papers from arXiv..."
+            )
+        else:
+            print(
+                "Fetching up to "
+                f"{capped_ir_limit} cs.IR and {capped_nlp_limit} cs.CL papers from arXiv..."
+            )
         ir_papers = fetch_recent_papers(
             category="cs.IR",
             limit=capped_ir_limit,
@@ -270,33 +277,38 @@ def main() -> None:
             sort_by="lastUpdatedDate",
             updated_after=updated_after_value,
         )
-        keyword_papers = fetch_keyword_papers(
-            keywords=keywords,
-            limit=capped_others_limit,
-            timeout=arxiv_timeout,
-            id_prefix="OTH",
-            exclude_categories=["cs.IR", "cs.CL"],
-            sort_by="lastUpdatedDate",
-            updated_after=updated_after_value,
-        )
-        existing_ids = {paper.arxiv_id for paper in ir_papers + nlp_papers}
-        filtered_keyword_papers = [
-            paper for paper in keyword_papers if paper.arxiv_id not in existing_ids
-        ]
-        if len(filtered_keyword_papers) < len(keyword_papers):
-            print(
-                f"Removed {len(keyword_papers) - len(filtered_keyword_papers)} "
-                "keyword papers that overlap with IR/CL."
+        filtered_keyword_papers = []
+        if include_keywords:
+            keyword_papers = fetch_keyword_papers(
+                keywords=keywords,
+                limit=capped_others_limit,
+                timeout=arxiv_timeout,
+                id_prefix="OTH",
+                exclude_categories=["cs.IR", "cs.CL"],
+                sort_by="lastUpdatedDate",
+                updated_after=updated_after_value,
             )
-        if len(filtered_keyword_papers) < capped_others_limit:
-            print(
-                f"Only {len(filtered_keyword_papers)} keyword papers available after filtering."
-            )
+            existing_ids = {paper.arxiv_id for paper in ir_papers + nlp_papers}
+            filtered_keyword_papers = [
+                paper for paper in keyword_papers if paper.arxiv_id not in existing_ids
+            ]
+            if len(filtered_keyword_papers) < len(keyword_papers):
+                print(
+                    f"Removed {len(keyword_papers) - len(filtered_keyword_papers)} "
+                    "keyword papers that overlap with IR/CL."
+                )
+            if len(filtered_keyword_papers) < capped_others_limit:
+                print(
+                    f"Only {len(filtered_keyword_papers)} keyword papers available after filtering."
+                )
         papers_local = ir_papers + nlp_papers + filtered_keyword_papers
-        print(
-            f"Fetched {len(ir_papers)} cs.IR, {len(nlp_papers)} cs.CL, "
-            f"and {len(filtered_keyword_papers)} keyword papers."
-        )
+        if include_keywords:
+            print(
+                f"Fetched {len(ir_papers)} cs.IR, {len(nlp_papers)} cs.CL, "
+                f"and {len(filtered_keyword_papers)} keyword papers."
+            )
+        else:
+            print(f"Fetched {len(ir_papers)} cs.IR and {len(nlp_papers)} cs.CL papers (keywords disabled).")
         counts = _count_sources(papers_local)
         return papers_local, counts
 
@@ -322,7 +334,7 @@ def main() -> None:
     podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
 
     # Stage 1: fetch without date filtering, then gate by author influence
-    papers, _ = fetch_all(None)
+    papers, _ = fetch_all(None, include_keywords=include_keyword_papers)
     fetched_count = len(papers)
     influence_result = filter_by_author_influence(
         client=influence_client,
@@ -403,6 +415,7 @@ def main() -> None:
         cost_tracker=cost_tracker,
         openai_timeout=openai_timeout,
         provider=ranking_provider,
+        include_keyword_papers=include_keyword_papers,
     )
     print("Ranking complete.")
 
@@ -520,11 +533,17 @@ def main() -> None:
             provider=affiliation_provider,
         )
 
-        stats_line = (
-            f"Stats: IR {fetch_counts.get('ir', 0)}, "
-            f"CL {fetch_counts.get('cl', 0)}, "
-            f"Keywords {fetch_counts.get('keywords', 0)} (final set)."
-        )
+        if include_keyword_papers:
+            stats_line = (
+                f"Stats: IR {fetch_counts.get('ir', 0)}, "
+                f"CL {fetch_counts.get('cl', 0)}, "
+                f"Keywords {fetch_counts.get('keywords', 0)} (final set)."
+            )
+        else:
+            stats_line = (
+                f"Stats: IR {fetch_counts.get('ir', 0)}, "
+                f"CL {fetch_counts.get('cl', 0)} (final set, keywords disabled)."
+            )
 
         lines: list[str] = []
         if fallback_note:
@@ -573,11 +592,17 @@ def main() -> None:
             run_name=run_dir.name,
             items=items,
         )
-        html_stats = (
-            f"<p><strong>Stats:</strong> IR {fetch_counts.get('ir', 0)}, "
-            f"CL {fetch_counts.get('cl', 0)}, "
-            f"Keywords {fetch_counts.get('keywords', 0)} (final set).</p>"
-        )
+        if include_keyword_papers:
+            html_stats = (
+                f"<p><strong>Stats:</strong> IR {fetch_counts.get('ir', 0)}, "
+                f"CL {fetch_counts.get('cl', 0)}, "
+                f"Keywords {fetch_counts.get('keywords', 0)} (final set).</p>"
+            )
+        else:
+            html_stats = (
+                f"<p><strong>Stats:</strong> IR {fetch_counts.get('ir', 0)}, "
+                f"CL {fetch_counts.get('cl', 0)} (final set, keywords disabled).</p>"
+            )
         html_prefix = ""
         if fallback_note:
             html_prefix += f"<p><strong>NOTE:</strong> {fallback_note}</p>"

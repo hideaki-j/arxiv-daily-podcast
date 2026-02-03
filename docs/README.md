@@ -44,6 +44,7 @@ Settings in `my_config/config.yaml`:
 | `ir_limit` | `50` | cs.IR papers to fetch (max 50) |
 | `nlp_limit` | `50` | cs.CL papers to fetch (max 50) |
 | `others_limit` | `50` | Keyword papers to fetch (max 50) |
+| `include_keyword_papers` | `false` | Include keyword-matched papers (set to `false` for IR/CL only mode) |
 | `keywords_path` | `my_config/keywords.yaml` | Path to keywords YAML |
 | `top_n` | `3` | Papers to rank and download |
 | `top_n_tts` | `3` | Papers to generate audio for (<= `top_n`) |

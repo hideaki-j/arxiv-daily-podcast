@@ -40,6 +40,7 @@ Edit `my_config/config.yaml` to control the run:
 - `podcast_provider`: set to `openrouter` to use OpenRouter for podcast generation (requires `OPENROUTER_API_KEY` in .env), or leave unset for default (`openai`).
 - `top_n`, `top_n_tts`: how many papers to rank vs. generate audio for.
 - `generate_transcript`, `use_tts`: enable/disable transcripts and mp3 audio.
+- `include_keyword_papers`: set to `false` for IR/CL only mode (excludes keyword-matched papers).
 - `email_enabled`: enable/disable Gmail delivery.
 - `keywords_path`: keyword list for discovery.
 
