@@ -15,9 +15,10 @@ from .models import Paper
 logger = logging.getLogger(__name__)
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
-ARXIV_REQUEST_INTERVAL = 3   # seconds between requests (arXiv policy)
-MAX_RETRIES = 5
+ARXIV_REQUEST_INTERVAL = 5   # seconds between requests (generous vs arXiv's 3s min)
+MAX_RETRIES = 8
 INITIAL_BACKOFF = 5          # seconds
+MAX_BACKOFF = 120            # cap individual retry delay
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503}
 
 
@@ -32,7 +33,7 @@ def _arxiv_get(url: str, timeout: int) -> httpx.Response:
             last_exc = exc
             if attempt == MAX_RETRIES:
                 raise
-            delay = INITIAL_BACKOFF * (2 ** attempt) + random.uniform(0, 1)
+            delay = min(INITIAL_BACKOFF * (2 ** attempt), MAX_BACKOFF) + random.uniform(0, 1)
             logger.warning(
                 "arXiv request failed (%s, attempt %d/%d), retrying in %.1fs",
                 type(exc).__name__, attempt + 1, MAX_RETRIES, delay,
@@ -48,7 +49,7 @@ def _arxiv_get(url: str, timeout: int) -> httpx.Response:
         if retry_after:
             delay = float(retry_after)
         else:
-            delay = INITIAL_BACKOFF * (2 ** attempt) + random.uniform(0, 1)
+            delay = min(INITIAL_BACKOFF * (2 ** attempt), MAX_BACKOFF) + random.uniform(0, 1)
         logger.warning(
             "arXiv returned %s (attempt %d/%d), retrying in %.1fs",
             response.status_code, attempt + 1, MAX_RETRIES, delay,
