@@ -628,24 +628,30 @@ def main() -> None:
         manga_prompt = load_manga_prompt(DEFAULT_MANGA_PROMPT_PATH)
         manga_dir = run_dir / "manga"
         print("Generating manga image for winning paper...")
-        manga_image_paths.append(
-            generate_manga_image(
-                client=openai_client,
-                model=manga_image_model,
-                prompt_template=manga_prompt,
-                paper=selected_papers[0],
-                pdf_path=pdf_paths[0],
-                image_dir=manga_dir,
-                rank=1,
-                size=manga_image_size,
-                quality=manga_image_quality,
-                output_format=manga_image_output_format,
-                pricing=manga_image_pricing,
-                cost_tracker=cost_tracker,
-                timeout=openai_timeout,
+        try:
+            manga_image_paths.append(
+                generate_manga_image(
+                    client=openai_client,
+                    model=manga_image_model,
+                    prompt_template=manga_prompt,
+                    paper=selected_papers[0],
+                    pdf_path=pdf_paths[0],
+                    image_dir=manga_dir,
+                    rank=1,
+                    size=manga_image_size,
+                    quality=manga_image_quality,
+                    output_format=manga_image_output_format,
+                    pricing=manga_image_pricing,
+                    cost_tracker=cost_tracker,
+                    timeout=openai_timeout,
+                )
             )
-        )
-        print("Manga image complete.")
+            print("Manga image complete.")
+        except Exception as exc:
+            print(
+                "Warning: manga image generation failed; "
+                f"continuing without image attachment ({type(exc).__name__}: {exc})."
+            )
     else:
         print("Manga image generation disabled.")
 
@@ -708,18 +714,25 @@ def main() -> None:
                     "pricing": tts_pricing,
                 }
 
-                podcast_paths = batch_synthesize_podcast(
-                    client=openai_client,
-                    primary_config=primary_config,
-                    items=tts_items,
-                    timeout=openai_timeout,
-                    cost_tracker=cost_tracker,
-                    instructions=_load_tts_instructions(),
-                    label="TTS",
-                    max_workers=min(4, len(tts_items)),
-                    compress_to_64kbps=compress_to_64kbps,
-                )
-                print("Transcripts and audio complete.")
+                try:
+                    podcast_paths = batch_synthesize_podcast(
+                        client=openai_client,
+                        primary_config=primary_config,
+                        items=tts_items,
+                        timeout=openai_timeout,
+                        cost_tracker=cost_tracker,
+                        instructions=_load_tts_instructions(),
+                        label="TTS",
+                        max_workers=min(4, len(tts_items)),
+                        compress_to_64kbps=compress_to_64kbps,
+                    )
+                    print("Transcripts and audio complete.")
+                except Exception as exc:
+                    podcast_paths = []
+                    print(
+                        "Warning: TTS generation failed; "
+                        f"continuing without audio attachment ({type(exc).__name__}: {exc})."
+                    )
             else:
                 print("TTS skipped (no transcripts available).")
         else:

@@ -106,7 +106,6 @@ def generate_manga_image(
         quality=quality,
         output_format=output_format,
         n=1,
-        response_format="b64_json",
         timeout=timeout,
     )
     if not result.data or not result.data[0].b64_json:
