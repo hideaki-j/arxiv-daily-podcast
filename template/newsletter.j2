@@ -4,152 +4,121 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>arXiv update {{ run_name }}</title>
-  <style>
-    :root {
-      --bg: #f6f1ea;
-      --ink: #1c1c1c;
-      --muted: #5a5a5a;
-      --card: #ffffff;
-      --accent: #0f766e;
-      --accent-2: #b45309;
-      --border: #eadfd3;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: "Segoe UI", Arial, sans-serif;
-      line-height: 1.6;
-      padding: 32px 16px 56px;
-    }
-    .container {
-      max-width: 860px;
-      margin: 0 auto;
-    }
-    .hero {
-      background: #0f766e;
-      color: #ffffff;
-      border-radius: 18px;
-      padding: 28px 28px 22px;
-      position: relative;
-      overflow: hidden;
-    }
-    .title {
-      font-family: "Georgia", "Times New Roman", serif;
-      font-size: 30px;
-      margin: 0 0 6px;
-      letter-spacing: 0.2px;
-    }
-    .subtitle {
-      margin: 0;
-      font-size: 15px;
-      opacity: 0.9;
-    }
-    .badge {
-      display: inline-block;
-      margin-top: 14px;
-      padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.16);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 999px;
-      font-size: 12px;
-      letter-spacing: 0.3px;
-      text-transform: uppercase;
-    }
-    .section-title {
-      margin: 28px 0 12px;
-      font-size: 16px;
-      color: var(--muted);
-      letter-spacing: 0.2px;
-    }
-    .list {
-      display: grid;
-      gap: 16px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 18px 20px 16px;
-    }
-    .card-header {
-      display: block;
-    }
-    .rank {
-      font-weight: 700;
-      color: #000000;
-      font-size: 15px;
-    }
-    .paper-title .rank {
-      margin-right: 8px;
-    }
-    .paper-title {
-      font-family: "Georgia", "Times New Roman", serif;
-      font-size: 20px;
-      margin: 0;
-    }
-    .paper-meta {
-      margin-top: 8px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .paper-meta span {
-      display: block;
-      margin-top: 4px;
-    }
-    .tldr {
-      margin-top: 12px;
-      background: #fff7ed;
-      border-left: 4px solid var(--accent-2);
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 14px;
-    }
-    .footer {
-      margin-top: 28px;
-      color: var(--muted);
-      font-size: 12px;
-      text-align: center;
-    }
-    @media (max-width: 640px) {
-      body { padding: 22px 12px 40px; }
-      .hero { padding: 22px; }
-      .paper-title { font-size: 18px; }
-    }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="hero">
-      <h1 class="title">arXiv Update</h1>
-      <p class="subtitle">Top-ranked papers in IR + NLP with concise TL;DRs</p>
-      <span class="badge">{{ run_name }}</span>
-    </div>
+<body style="margin:0; padding:0; background:#f3f4f6; color:#111827; font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6; margin:0; padding:24px 0;">
+    <tr>
+      <td align="center" style="padding:0 12px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:760px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">
+          <tr>
+            <td style="background:#0f766e; color:#ffffff; padding:24px 26px;">
+              <div style="font-family:Georgia, 'Times New Roman', serif; font-size:28px; line-height:34px; font-weight:bold;">arXiv Update</div>
+              <div style="font-size:14px; line-height:22px; color:#d1fae5; margin-top:4px;">One selected paper with scoring details</div>
+              <div style="display:inline-block; margin-top:12px; padding:5px 9px; border:1px solid #99f6e4; border-radius:14px; color:#ecfdf5; font-size:12px; line-height:14px;">{{ run_name }}</div>
+            </td>
+          </tr>
 
-    <div class="section-title">Top papers</div>
-    <div class="list">
-      {% for item in items %}
-      <div class="card">
-        <div class="card-header">
-          <h2 class="paper-title">
-            <span class="rank">#{{ item.rank }} {{ item.paper_id }}</span>
-            <a href="{{ item.arxiv_url }}">{{ item.title }}</a>
-          </h2>
-        </div>
-        <div class="paper-meta">
-          <span><strong>Authors:</strong> {{ item.authors }}</span>
-          <span><strong>Affiliations:</strong> {{ item.affiliations }}</span>
-          {% if item.published_line %}
-          <span><strong>Published:</strong> {{ item.published_line }}</span>
+          {% if notices %}
+          <tr>
+            <td style="padding:18px 26px 0;">
+              {% for notice in notices %}
+              <div style="margin:0 0 8px; padding:10px 12px; background:#eff6ff; border-left:4px solid #2563eb; border-radius:6px; font-size:13px; line-height:19px; color:#1f2937;">
+                {{ notice }}
+              </div>
+              {% endfor %}
+            </td>
+          </tr>
           {% endif %}
-        </div>
-        <div class="tldr"><strong>TL;DR:</strong> {{ item.tldr }}</div>
-      </div>
-      {% endfor %}
-    </div>
 
-    <div class="footer">Generated by the Automatic Evaluation pipeline.</div>
-  </div>
+          <tr>
+            <td style="padding:18px 26px 4px;">
+              <div style="font-size:13px; line-height:18px; color:#6b7280; font-weight:bold; text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px;">Run Stats</div>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  {% for stat in stats %}
+                  <td width="25%" valign="top" style="padding:0 6px 8px 0;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb;">
+                      <tr>
+                        <td style="padding:10px 10px 8px;">
+                          <div style="font-size:22px; line-height:26px; font-weight:bold; color:#111827;">{{ stat.value }}</div>
+                          <div style="font-size:12px; line-height:16px; color:#6b7280; margin-top:2px;">{{ stat.label }}</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  {% endfor %}
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:10px 26px 28px;">
+              {% for item in items %}
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e5e7eb; border-radius:8px; background:#ffffff;">
+                <tr>
+                  <td style="padding:20px 20px 14px;">
+                    <div style="font-size:12px; line-height:16px; color:#0f766e; font-weight:bold; text-transform:uppercase; letter-spacing:.04em;">Selected Paper · {{ item.paper_id }}</div>
+                    <h1 style="font-family:Georgia, 'Times New Roman', serif; font-size:24px; line-height:31px; margin:7px 0 8px; color:#111827;">
+                      <a href="{{ item.arxiv_url }}" style="color:#0f766e; text-decoration:none;">{{ item.title }}</a>
+                    </h1>
+                    <div style="font-size:13px; line-height:20px; color:#4b5563;">
+                      <div><strong>Authors:</strong> {{ item.authors }}</div>
+                      <div><strong>Affiliations:</strong> {{ item.affiliations }}</div>
+                      {% if item.published_line %}
+                      <div><strong>Published:</strong> {{ item.published_line }}</div>
+                      {% endif %}
+                    </div>
+
+                    {% if item.tldr %}
+                    <div style="margin-top:14px; padding:12px 14px; background:#fffbeb; border-left:4px solid #d97706; border-radius:6px; font-size:14px; line-height:21px; color:#1f2937;">
+                      <strong>TL;DR:</strong> {{ item.tldr }}
+                    </div>
+                    {% endif %}
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:16px; border:1px solid #e5e7eb; border-radius:8px;">
+                      <tr>
+                        <td colspan="4" style="padding:12px 14px; background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+                          <span style="font-size:15px; line-height:20px; font-weight:bold; color:#111827;">Scoring Panel</span>
+                          <span style="font-size:13px; line-height:20px; color:#6b7280;"> · final score {{ item.total_score }}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#6b7280; font-weight:bold;">Label</td>
+                        <td align="center" style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#6b7280; font-weight:bold;">Score</td>
+                        <td align="center" style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#6b7280; font-weight:bold;">Type</td>
+                        <td align="right" style="padding:8px 10px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#6b7280; font-weight:bold;">Contribution</td>
+                      </tr>
+                      {% for row in item.score_rows %}
+                      <tr>
+                        <td style="padding:9px 10px; border-bottom:1px solid #f3f4f6; font-size:13px; line-height:18px; color:#111827;">{{ row.label }}</td>
+                        <td align="center" style="padding:9px 10px; border-bottom:1px solid #f3f4f6; font-size:13px; line-height:18px; color:#111827; white-space:nowrap;">{{ row.score }} ({{ row.range }})</td>
+                        <td align="center" style="padding:9px 10px; border-bottom:1px solid #f3f4f6; font-size:13px; line-height:18px; white-space:nowrap;">
+                          {% if row.polarity == "minus" %}
+                          <span style="display:inline-block; padding:2px 7px; border-radius:12px; background:#fef2f2; color:#b91c1c;">minus</span>
+                          {% else %}
+                          <span style="display:inline-block; padding:2px 7px; border-radius:12px; background:#ecfdf5; color:#047857;">plus</span>
+                          {% endif %}
+                        </td>
+                        <td align="right" style="padding:9px 10px; border-bottom:1px solid #f3f4f6; font-size:13px; line-height:18px; color:#111827; white-space:nowrap;">{{ row.contribution }}</td>
+                      </tr>
+                      {% endfor %}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              {% endfor %}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 26px 22px; color:#6b7280; font-size:12px; line-height:18px; text-align:center;">
+              Generated by the Automatic Evaluation pipeline.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

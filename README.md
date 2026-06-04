@@ -1,6 +1,6 @@
 # ArXiv Dialy Newsletter & Podcast
 
-Daily arXiv newsletter and podcast for automatic evaluation research. Fetches recent cs.IR and cs.CL papers plus keyword-matched papers, runs an author-influence pre-filter, ranks the remainder with LLM, generates podcast-style audio summaries, and sends email digests.
+Daily arXiv newsletter and podcast for automatic evaluation research. Fetches recent cs.IR and cs.CL papers plus keyword-matched papers, stores them in a persistent pool, scores unsent papers with LLM, generates podcast-style audio summaries, and sends email digests.
 
 ## Vibe Code Alert
 
@@ -35,7 +35,8 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml
 
 Edit `my_config/config.yaml` to control the run:
 
-- `influence_filter_model`, `influence_score_threshold`: model and minimum score (0–4) for the author-influence gate (keeps papers with scores >= threshold).
+- `influence_filter_model`, `influence_score_threshold`: model and minimum score (0–5) for author influence reporting; keep this at `4` to include scores `4` and `5`.
+- `ranking_aspects_path`, `ranking_max_workers`: separate YAML file for ranking aspect weights and the parallel worker count for per-paper ranking scores.
 - `ranking_model`, `podcast_model`: main LLMs for ranking and transcripts.
 - `podcast_provider`: set to `openrouter` to use OpenRouter for podcast generation (requires `OPENROUTER_API_KEY` in .env), or leave unset for default (`openai`).
 - `top_n`, `top_n_tts`: how many papers to rank vs. generate audio for.
@@ -62,15 +63,16 @@ More details (full config list, pricing, outputs, structure) are in
 ```mermaid
 flowchart TD
   A["config.yaml<br>+ keywords.yaml<br>+ .env<br/>(__main__.py)"] --> B["Fetch arXiv papers<br/>cs.IR + cs.CL + keywords<br/>(arxiv_client.py)"]
-  B --> C["LLM author influence pre-filter<br/>(influence_filter.py)"]
-  C --> D["LLM ranking + TL;DRs<br/>(ranking.py)"]
-  D --> E["Write rankings.csv + results.json<br/>(output.py)"]
-  D --> F["Download top PDFs<br/>(output.py)"]
-  F --> G["LLM transcripts<br/>(podcast.py)"]
-  G --> H["TTS mp3s<br/>(tts.py)"]
-  D --> I["HTML newsletter<br/>(output.py)"]
-  I --> J["Email send (optional)<br/>(emailer.py)"]
-  H --> J
+  B --> C["LLM author influence scoring<br/>(influence_filter.py)"]
+  C --> D["Persistent paper pool<br/>with sent flag<br/>(paper_state.py)"]
+  D --> E["LLM per-paper aspect scoring<br/>+ aggregate ranking<br/>(ranking.py)"]
+  E --> F["Write rankings.csv + results.json<br/>(output.py)"]
+  E --> G["Download top PDF<br/>(output.py)"]
+  G --> H["LLM transcripts<br/>(podcast.py)"]
+  H --> I["TTS mp3s<br/>(tts.py)"]
+  E --> J["HTML newsletter<br/>(output.py)"]
+  J --> K["Email send (optional)<br/>(emailer.py)"]
+  I --> K
 ```
 
 Optional steps: transcripts, TTS, and email are controlled by config flags.
@@ -82,13 +84,13 @@ Optional steps: transcripts, TTS, and email are controlled by config flags.
 
 
 **Q. How much does it cost to run?**
-- A. In general, ~$0.50 per run. Details: It depends on the models and how many papers/audio you generate (the author-influence gate adds an extra LLM pass). Costs are tracked during a run and printed at the end; edit `my_config/pricing.json`, `top_n`, `top_n_tts`, and transcript/TTS flags to control spend.
+- A. In general, ~$0.50 per run. Details: It depends on the models and how many papers/audio you generate (author-influence scoring adds an extra LLM pass). Costs are tracked during a run and printed at the end; edit `my_config/pricing.json`, `top_n`, `top_n_tts`, and transcript/TTS flags to control spend.
 
 
 **Q. Can I customize the keywords/retrieval/domain?**
 - A. Keywords are fully configurable in `my_config/keywords.yaml`, and limits are in `my_config/config.yaml`.
   - Changing the base arXiv categories (currently `cs.IR` and `cs.CL`) requires a small code tweak in `src/ir_arxiv_ranker/__main__.py` / `src/ir_arxiv_ranker/arxiv_client.py`.
-  - Changing retrieval criteria requires edits in the prompt in `prompt/prompt_ranking.j2` (and, for arXiv query filters, `src/ir_arxiv_ranker/arxiv_client.py`).
+  - Changing scoring criteria requires edits in `prompt/prompt_scoring.j2` and `my_config/ranking_aspects.yaml` (and, for arXiv query filters, `src/ir_arxiv_ranker/arxiv_client.py`).
 
 
 In either case, the only thing you need to do is open Claude Code/Cursor/Antigravity/Copilot/Cline/etc. and **just vibe code it**. 😎

@@ -1,0 +1,27 @@
+negative:
+  visual_multimodal_audio:
+    label: visual/multi-modal/audio papers
+    weight: 1
+  survey:
+    label: survey papers
+    weight: 1
+  dataset_focused:
+    label: dataset-focused papers where proposing the dataset is the main contribution
+    weight: 1
+
+positive:
+  legal_domain:
+    label: legal domain
+    weight: 1
+  financial_domain:
+    label: financial domain
+    weight: 1
+  conversational_domain:
+    label: conversational domain
+    weight: 1
+  automatic_eval_or_user_simulation_challenges:
+    label: analysis or discussion of the problem/challenges of the automatic evaluation / user simulation
+    weight: 1
+  prompt_optimization_or_prompting:
+    label: covering prompt optimization or prompting techniques
+    weight: 1

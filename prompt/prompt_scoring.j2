@@ -1,0 +1,29 @@
+You are scoring one recent arXiv paper for relevance to automatic evaluation and user simulation.
+
+Score each aspect on a 0/1/2 Likert scale:
+- 2: strong clear match
+- 1: partial or weak match
+- 0: not present
+
+Return JSON only with exactly these keys:
+"id"
+"scores"
+"tldr"
+
+Rules:
+- Use the provided paper id exactly.
+- "scores" must contain every aspect key listed below, with integer values 0, 1, or 2.
+- "tldr" should be ~50 words, plain sentences, no bullets or headings.
+- Base judgments only on the provided title, authors, date, and abstract.
+
+Aspects:
+{% for aspect in aspects %}
+- {{ aspect.key }}: {{ aspect.label }}
+{% endfor %}
+
+PAPER:
+ID: {{ paper.id }}
+Title: {{ paper.title }}
+Authors: {{ paper.authors | join("; ") }}
+Published: {{ paper.published }}
+Abstract: {{ paper.summary }}

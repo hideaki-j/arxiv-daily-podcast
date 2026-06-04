@@ -46,6 +46,8 @@ class Settings:
     openai_timeout: int
     influence_score_threshold: int
     influence_max_workers: int | None
+    ranking_aspects_path: Path
+    ranking_max_workers: int
 
 
 def _parse_llm_call_config(raw: dict | None, name: str) -> LLMCallConfig:
@@ -106,8 +108,10 @@ def load_config(config_path: Path) -> Settings:
     pricing_path = raw_config.get("pricing_path")
     arxiv_timeout = raw_config.get("arxiv_timeout")
     openai_timeout = raw_config.get("openai_timeout")
-    influence_score_threshold = raw_config.get("influence_score_threshold", 3)
+    influence_score_threshold = raw_config.get("influence_score_threshold", 4)
     influence_max_workers = raw_config.get("influence_max_workers")
+    ranking_aspects_path = raw_config.get("ranking_aspects_path", "my_config/ranking_aspects.yaml")
+    ranking_max_workers = raw_config.get("ranking_max_workers", 150)
 
     # Validate boolean settings
     if not isinstance(use_tts, bool):
@@ -147,11 +151,15 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("openai_timeout must be an integer >= 1")
     if not isinstance(influence_score_threshold, int):
         raise SystemExit("influence_score_threshold must be an integer")
-    if influence_score_threshold < 0 or influence_score_threshold > 4:
-        raise SystemExit("influence_score_threshold must be between 0 and 4")
+    if influence_score_threshold < 0 or influence_score_threshold > 5:
+        raise SystemExit("influence_score_threshold must be between 0 and 5")
     if influence_max_workers is not None:
         if not isinstance(influence_max_workers, int) or influence_max_workers < 1:
             raise SystemExit("influence_max_workers must be an integer >= 1")
+    if not isinstance(ranking_max_workers, int) or ranking_max_workers < 1:
+        raise SystemExit("ranking_max_workers must be an integer >= 1")
+    if not isinstance(ranking_aspects_path, str) or not ranking_aspects_path:
+        raise SystemExit("ranking_aspects_path must be a non-empty string")
 
     # Validate required paths
     if not pricing_path:
@@ -228,4 +236,6 @@ def load_config(config_path: Path) -> Settings:
         openai_timeout=openai_timeout,
         influence_score_threshold=influence_score_threshold,
         influence_max_workers=influence_max_workers,
+        ranking_aspects_path=Path(ranking_aspects_path),
+        ranking_max_workers=ranking_max_workers,
     )

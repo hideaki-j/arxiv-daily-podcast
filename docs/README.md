@@ -3,15 +3,15 @@
 ## What it does
 
 1. **Fetches papers** from arXiv (cs.IR, cs.CL, and keyword-matched) sorted by last updated date
-2. **Filters papers** with an author-influence LLM stage (0–4 Likert gate)
-3. **Ranks papers** using LLM based on relevance to automatic evaluation
+2. **Stores discovered papers** in a persistent pool with a `sent` flag
+3. **Scores each unsent paper** on configurable ranking aspects, then ranks by the aggregate score
 4. **Downloads PDFs** of top-ranked papers
 5. **Generates transcripts** for podcast-style summaries using LLM
 6. **Synthesizes audio** (TTS) from transcripts
 7. **Sends email** with HTML newsletter and mp3 attachments
 8. **Tracks costs** across all LLM/TTS calls
 
-Cost note: the author-influence pre-filter adds an extra LLM call; ensure your `pricing.json` includes the chosen `influence_filter_model`.
+Cost note: author-influence scoring adds an extra LLM call; ensure your `pricing.json` includes the chosen `influence_filter_model`.
 
 Each run creates a timestamped directory under `data/YYMMDD-HHMMSS/` with:
 - `rankings.csv` and `results.json` - ranking results with TL;DRs and `author_influence_threshold`
@@ -28,17 +28,19 @@ Settings in `my_config/config.yaml`:
 |---------|---------------|-------------|
 | `email_enabled` | `true` | Enable/disable email sending |
 | `generate_transcript` | `true` | Enable/disable transcript generation |
-| `filter_since_last_schedule` | `true` | Filter papers to those updated after the last scheduled GitHub Action run (cron in `.github/workflows/arxiv-newsletter.yml`) |
+| `filter_since_last_schedule` | `true` | Ignored in bucket mode; paper-state deduplication controls repeat notifications |
 | `use_tts` | `true` | Enable/disable audio synthesis |
 | `ranking_model` | `gpt-5-2025-08-07` | Model for paper ranking |
 | `podcast_model` | `gpt-5-2025-08-07` | Model for transcript generation |
 | `tts_model` | `gpt-4o-mini-tts-2025-03-20` | Model for audio synthesis |
 | `tts_voice` | `marin` | Voice ID for TTS |
 | `tts_instructions_path` | `prompt/tts_instructions.txt` | Path to TTS style instructions |
-| `influence_filter_model` | `gpt-5-mini-2025-08-07` | Model for author influence pre-filter |
+| `influence_filter_model` | `gpt-5-mini-2025-08-07` | Model for author-influence scoring |
 | `influence_prompt_path` | `prompt/prompt_influence_filter.j2` | Prompt template for author influence scoring |
-| `influence_score_threshold` | `3` | Minimum author influence score (0–4) required to keep a paper |
-| `influence_batch_size` | _unset_ | Optional batch size for influence scoring (default 150) |
+| `influence_score_threshold` | `4` | Minimum author-influence score (0–5) to report as influential; includes scores 4 and 5 |
+| `ranking_aspects_path` | `my_config/ranking_aspects.yaml` | Separate YAML file with positive/negative ranking aspects and weights |
+| `ranking_max_workers` | `150` | Parallel worker count for per-paper ranking aspect scoring |
+| `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |
 | `compress_to_64kbps` | `true` | Compress mp3 to 64 kbps (requires `ffmpeg`) |
 | `pricing_path` | `my_config/pricing.json` | Path to model pricing JSON |
 | `ir_limit` | `50` | cs.IR papers to fetch (max 50) |
@@ -116,7 +118,7 @@ src/utils/
   costs.py           # Cost tracking
   naming.py          # File naming utilities
 prompt/
-  prompt_ranking.j2  # Ranking prompt template
+  prompt_scoring.j2  # Per-paper scoring prompt template
   prompt_podcast.j2  # Podcast transcript template
   tts_instructions.txt
   prompt_influence_filter.j2

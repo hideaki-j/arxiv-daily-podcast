@@ -12,7 +12,7 @@ from .models import Paper
 
 
 INFLUENCE_SCORE_MIN = 0
-INFLUENCE_SCORE_MAX = 4
+INFLUENCE_SCORE_MAX = 5
 DEFAULT_INFLUENCE_MAX_WORKERS = 150
 
 
@@ -62,6 +62,7 @@ def filter_by_author_influence(
     cost_tracker: CostTracker | None = None,
     openai_timeout: int | None = None,
     provider: str = "openai",
+    priority_authors: list[str] | None = None,
 ) -> InfluenceResult:
     if threshold < INFLUENCE_SCORE_MIN or threshold > INFLUENCE_SCORE_MAX:
         raise ValueError(
@@ -85,7 +86,8 @@ def filter_by_author_influence(
                 "id": paper.paper_id,
                 "title": paper.title,
                 "authors": paper.authors,
-            }
+            },
+            priority_authors=priority_authors or [],
         )
         prompts.append(prompt)
         response_formats.append(response_format)
