@@ -6,21 +6,35 @@ from pathlib import Path
 from jinja2 import Environment, StrictUndefined
 
 from utils.costs import CostTracker
+from utils.call_llm import call_llm_text
 from utils.naming import build_file_stem
 
 from .models import Paper
-from .podcast import _extract_pdf_text, _truncate_words
+from .podcast import _extract_pdf_text
 
 
 def load_manga_prompt(path: Path) -> str:
     return path.read_text()
 
 
-def _render_prompt(prompt_template: str, paper: Paper, paper_text: str, model: str) -> str:
+def _truncate_chars(text: str, char_cutoff: int | None) -> str:
+    if char_cutoff is None:
+        return text
+    return text[:char_cutoff]
+
+
+def _render_prompt(
+    prompt_template: str,
+    paper: Paper,
+    model: str,
+    paper_text: str = "",
+    manga_instruction: str = "",
+) -> str:
     env = Environment(autoescape=False, undefined=StrictUndefined)
     return env.from_string(prompt_template).render(
         paper=paper,
         paper_text=paper_text,
+        manga_instruction=manga_instruction,
         model=model,
     )
 
@@ -82,24 +96,60 @@ def _usage_detail(usage) -> str:
     )
 
 
-def generate_manga_image(
+def generate_manga_instruction(
     client,
     model: str,
     prompt_template: str,
     paper: Paper,
     pdf_path: Path,
+    char_cutoff: int | None = 30000,
+    pricing: dict | None = None,
+    cost_tracker: CostTracker | None = None,
+    timeout: int | None = None,
+    provider: str = "openai",
+) -> str:
+    paper_text = _truncate_chars(_extract_pdf_text(pdf_path), char_cutoff)
+    prompt = _render_prompt(prompt_template, paper, model=model, paper_text=paper_text)
+    instruction = call_llm_text(
+        client=client,
+        model=model,
+        prompt=prompt,
+        timeout=timeout,
+        pricing=pricing,
+        cost_tracker=cost_tracker,
+        label="Manga planner LLM",
+        provider=provider,
+    ).strip()
+    if not instruction:
+        raise RuntimeError("Manga planner returned an empty instruction")
+    return instruction
+
+
+def generate_manga_image(
+    client,
+    model: str,
+    prompt_template: str,
+    manga_instruction: str,
+    paper: Paper,
     image_dir: Path,
     rank: int,
     size: str,
     quality: str,
     output_format: str,
-    word_cutoff: int | None = 8000,
+    char_cutoff: int | None = 30000,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
     timeout: int | None = None,
 ) -> Path:
-    paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
-    prompt = _render_prompt(prompt_template, paper, paper_text, model)
+    prompt = _truncate_chars(
+        _render_prompt(
+            prompt_template,
+            paper,
+            model=model,
+            manga_instruction=manga_instruction,
+        ),
+        char_cutoff,
+    )
     result = client.images.generate(
         model=model,
         prompt=prompt,

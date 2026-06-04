@@ -27,17 +27,18 @@ class ImageConfig:
     size: str
     quality: str
     output_format: str
-    word_cutoff: int | None
+    char_cutoff: int | None
 
 
 @dataclass(frozen=True)
 class Settings:
     ranking: LLMCallConfig
     podcast: LLMCallConfig
+    manga_planner: LLMCallConfig | None
     influence_filter: LLMCallConfig
     affiliation: LLMCallConfig
     tts: TTSConfig | None
-    manga_image: ImageConfig
+    manga_image: ImageConfig | None
     compress_to_64kbps: bool
     pricing_data: dict
     ir_limit: int
@@ -97,7 +98,7 @@ def _parse_image_config(raw: dict | None) -> ImageConfig:
     size = raw.get("size", "1536x1024")
     quality = raw.get("quality", "high")
     output_format = raw.get("output_format", "png")
-    word_cutoff = raw.get("word_cutoff", 8000)
+    char_cutoff = raw.get("char_cutoff", raw.get("word_cutoff", 30000))
     if provider != "openai":
         raise SystemExit("manga_image.provider must be 'openai'")
     if not model or not isinstance(model, str):
@@ -108,16 +109,16 @@ def _parse_image_config(raw: dict | None) -> ImageConfig:
         raise SystemExit("manga_image.quality must be low, medium, high, or auto")
     if output_format not in {"png", "jpeg", "webp"}:
         raise SystemExit("manga_image.output_format must be png, jpeg, or webp")
-    if word_cutoff is not None:
-        if not isinstance(word_cutoff, int) or word_cutoff < 1:
-            raise SystemExit("manga_image.word_cutoff must be an integer >= 1 or null")
+    if char_cutoff is not None:
+        if not isinstance(char_cutoff, int) or char_cutoff < 1:
+            raise SystemExit("manga_image.char_cutoff must be an integer >= 1 or null")
     return ImageConfig(
         provider=provider,
         model=model,
         size=size,
         quality=quality,
         output_format=output_format,
-        word_cutoff=word_cutoff,
+        char_cutoff=char_cutoff,
     )
 
 
@@ -128,12 +129,21 @@ def load_config(config_path: Path) -> Settings:
     if not isinstance(raw_config, dict):
         raise SystemExit("Config file must contain a YAML object at the top level.")
 
+    generate_manga_image = raw_config.get("generate_manga_image", True)
+    if not isinstance(generate_manga_image, bool):
+        raise SystemExit("generate_manga_image must be a boolean")
+
     # Parse LLM call configs
     ranking = _parse_llm_call_config(raw_config.get("ranking"), "ranking")
     podcast = _parse_llm_call_config(raw_config.get("podcast"), "podcast")
     influence_filter = _parse_llm_call_config(raw_config.get("influence_filter"), "influence_filter")
     affiliation = _parse_llm_call_config(raw_config.get("affiliation"), "affiliation")
-    manga_image = _parse_image_config(raw_config.get("manga_image"))
+    manga_planner = (
+        _parse_llm_call_config(raw_config.get("manga_planner"), "manga_planner")
+        if generate_manga_image
+        else None
+    )
+    manga_image = _parse_image_config(raw_config.get("manga_image")) if generate_manga_image else None
 
     # Parse other settings
     ir_limit = raw_config.get("ir_limit")
@@ -145,7 +155,6 @@ def load_config(config_path: Path) -> Settings:
     abst_word_cutoff = raw_config.get("abst_word_cutoff")
     transcript_word_cutoff = raw_config.get("transcript_word_cutoff")
     generate_transcript = raw_config.get("generate_transcript", True)
-    generate_manga_image = raw_config.get("generate_manga_image", True)
     filter_since_last_schedule = raw_config.get("filter_since_last_schedule", False)
     use_tts = raw_config.get("use_tts", True)
     include_keyword_papers = raw_config.get("include_keyword_papers", True)
@@ -168,8 +177,6 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("email_enabled must be a boolean")
     if not isinstance(generate_transcript, bool):
         raise SystemExit("generate_transcript must be a boolean")
-    if not isinstance(generate_manga_image, bool):
-        raise SystemExit("generate_manga_image must be a boolean")
     if not isinstance(compress_to_64kbps, bool):
         raise SystemExit("compress_to_64kbps must be a boolean")
     if not isinstance(include_keyword_papers, bool):
@@ -262,6 +269,7 @@ def load_config(config_path: Path) -> Settings:
     return Settings(
         ranking=ranking,
         podcast=podcast,
+        manga_planner=manga_planner,
         influence_filter=influence_filter,
         affiliation=affiliation,
         tts=tts,

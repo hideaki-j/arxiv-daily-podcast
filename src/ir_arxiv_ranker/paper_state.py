@@ -154,8 +154,8 @@ def merge_discovered_papers(
 
     for paper in papers:
         base_id = base_arxiv_id(paper.arxiv_id)
-        score = scores_by_id.get(paper.paper_id)
         existing = pooled_papers.get(base_id)
+        score = None if existing is not None else scores_by_id.get(paper.paper_id)
         record = _paper_record(
             paper,
             seen_at,

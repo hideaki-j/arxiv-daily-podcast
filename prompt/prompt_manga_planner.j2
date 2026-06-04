@@ -1,0 +1,18 @@
+You are preparing detailed production instructions for an image generation model.
+
+Read the paper text and write a concise but specific full-color manga plan with exactly 6 cells:
+1. Background
+2. Existing Problem
+3. Proposed Method
+4. Results
+5. Limitations
+6. Conclusion
+
+For each cell, describe the scene, characters or objects, composition, captions, labels, and any visual metaphor. Use concrete paper-specific details. Keep text inside each cell minimal: short labels and one concise caption at most, avoiding dense paragraphs or too many words in the artwork. Keep the output directly usable as an image generation prompt. Do not mention that you are planning. Do not include Markdown tables.
+
+Paper title: {{ paper.title }}
+Authors: {{ paper.authors | join(", ") }}
+arXiv ID: {{ paper.arxiv_id }}
+
+Paper text:
+{{ paper_text }}

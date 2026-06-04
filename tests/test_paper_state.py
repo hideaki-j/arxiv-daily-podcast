@@ -139,6 +139,26 @@ def test_missing_influence_score_does_not_wipe_existing_value():
     assert state["pooled_papers"]["2406.12345"]["influence_score"] == 5
 
 
+def test_existing_paper_influence_score_is_not_refreshed():
+    state = {"schema_version": 1, "pooled_papers": {}}
+    merge_discovered_papers(
+        state,
+        [_paper("2406.12345v1")],
+        scores_by_id={"IR001": 5},
+        seen_at="2026-06-03T12:00:00Z",
+    )
+
+    changed = merge_discovered_papers(
+        state,
+        [_paper("2406.12345v1")],
+        scores_by_id={"IR001": 1},
+        seen_at="2026-06-04T12:00:00Z",
+    )
+
+    assert changed == []
+    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 5
+
+
 def test_records_to_papers_uses_bucket_ids_and_base_mapping():
     state = {"schema_version": 1, "pooled_papers": {}}
     merge_discovered_papers(

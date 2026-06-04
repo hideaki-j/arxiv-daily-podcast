@@ -19,13 +19,17 @@ podcast:
   provider: openai
   model: gpt-5.5
 
+manga_planner:
+  provider: openai
+  model: gpt-5.5
+
 manga_image:
   provider: openai
   model: gpt-image-2
   size: 1536x1024
   quality: high
   output_format: png
-  word_cutoff: 8000
+  char_cutoff: 30000
 
 tts:
   provider: gemini

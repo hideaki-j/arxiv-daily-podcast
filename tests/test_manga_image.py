@@ -3,7 +3,11 @@ from __future__ import annotations
 import base64
 from types import SimpleNamespace
 
-from ir_arxiv_ranker.manga_image import _estimate_image_cost, generate_manga_image
+from ir_arxiv_ranker.manga_image import (
+    _estimate_image_cost,
+    generate_manga_image,
+    generate_manga_instruction,
+)
 from ir_arxiv_ranker.models import Paper
 
 
@@ -46,28 +50,26 @@ def test_generate_manga_image_omits_response_format_for_gpt_image_models(monkeyp
         summary="A test summary.",
         pdf_url="https://arxiv.org/pdf/2406.12345v1.pdf",
     )
-    monkeypatch.setattr("ir_arxiv_ranker.manga_image._extract_pdf_text", lambda _: "paper text")
-
     image_path = generate_manga_image(
         client=fake_client,
         model="gpt-image-2",
-        prompt_template="{{ paper_text }}",
+        prompt_template="{{ manga_instruction }}",
+        manga_instruction="six panel manga plan",
         paper=paper,
-        pdf_path=tmp_path / "paper.pdf",
         image_dir=tmp_path / "manga",
         rank=1,
         size="1536x1024",
         quality="high",
         output_format="png",
-        word_cutoff=8000,
     )
 
     assert "response_format" not in fake_images.kwargs
     assert fake_images.kwargs["model"] == "gpt-image-2"
+    assert fake_images.kwargs["prompt"] == "six panel manga plan"
     assert image_path.read_bytes() == b"image"
 
 
-def test_generate_manga_image_applies_image_only_word_cutoff(monkeypatch, tmp_path):
+def test_generate_manga_image_applies_final_prompt_char_cutoff(tmp_path):
     class FakeImages:
         def __init__(self):
             self.kwargs = None
@@ -91,23 +93,55 @@ def test_generate_manga_image_applies_image_only_word_cutoff(monkeypatch, tmp_pa
         summary="A test summary.",
         pdf_url="https://arxiv.org/pdf/2406.12345v1.pdf",
     )
-    monkeypatch.setattr(
-        "ir_arxiv_ranker.manga_image._extract_pdf_text",
-        lambda _: "one two three four five",
-    )
 
     generate_manga_image(
         client=fake_client,
         model="gpt-image-2",
-        prompt_template="{{ paper_text }}",
+        prompt_template="{{ manga_instruction }}",
+        manga_instruction="abcdef",
         paper=paper,
-        pdf_path=tmp_path / "paper.pdf",
         image_dir=tmp_path / "manga",
         rank=1,
         size="1536x1024",
         quality="high",
         output_format="png",
-        word_cutoff=3,
+        char_cutoff=3,
     )
 
-    assert fake_images.kwargs["prompt"] == "one two three"
+    assert fake_images.kwargs["prompt"] == "abc"
+
+
+def test_generate_manga_instruction_applies_image_only_char_cutoff(monkeypatch, tmp_path):
+    paper = Paper(
+        paper_id="B001",
+        arxiv_id="2406.12345v1",
+        title="Test Paper",
+        authors=["Ada Lovelace"],
+        published="2026-06-01T00:00:00Z",
+        updated="2026-06-01T00:00:00Z",
+        summary="A test summary.",
+        pdf_url="https://arxiv.org/pdf/2406.12345v1.pdf",
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "ir_arxiv_ranker.manga_image._extract_pdf_text",
+        lambda _: "abcdef",
+    )
+
+    def fake_call_llm_text(**kwargs):
+        captured["prompt"] = kwargs["prompt"]
+        return "plan"
+
+    monkeypatch.setattr("ir_arxiv_ranker.manga_image.call_llm_text", fake_call_llm_text)
+
+    instruction = generate_manga_instruction(
+        client=SimpleNamespace(),
+        model="gpt-5.5",
+        prompt_template="{{ paper_text }}",
+        paper=paper,
+        pdf_path=tmp_path / "paper.pdf",
+        char_cutoff=3,
+    )
+
+    assert captured["prompt"] == "abc"
+    assert instruction == "plan"
