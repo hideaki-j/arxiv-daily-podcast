@@ -119,6 +119,7 @@ src/utils/
   naming.py          # File naming utilities
 prompt/
   prompt_scoring.j2  # Per-paper scoring prompt template
+  prompt_selected_summary.j2  # Selected-paper newsletter summary template
   prompt_podcast.j2  # Podcast transcript template
   tts_instructions.txt
   prompt_influence_filter.j2

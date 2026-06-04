@@ -40,6 +40,7 @@ from .paper_state import (
     utc_now_iso,
 )
 from .schedule import last_scheduled_run, load_workflow_cron_schedules
+from .selected_summary import generate_selected_summaries_batch, load_selected_summary_prompt
 from .tts import batch_synthesize_podcast
 from .ranking import aggregate_score, load_ranking_aspects, rank_from_scores, rank_papers
 
@@ -50,6 +51,7 @@ DEFAULT_CONFIG_PATH = Path("my_config") / "config.yaml"
 DEFAULT_SCORING_PROMPT_PATH = Path("prompt") / "prompt_scoring.j2"
 DEFAULT_PODCAST_PROMPT_PATH = Path("prompt") / "prompt_podcast.j2"
 DEFAULT_NEWSLETTER_TEMPLATE = Path("template") / "newsletter.j2"
+DEFAULT_SELECTED_SUMMARY_PROMPT_PATH = Path("prompt") / "prompt_selected_summary.j2"
 DEFAULT_WORKFLOW_PATH = Path(".github") / "workflows" / "arxiv-newsletter.yml"
 DEFAULT_INFLUENCE_PROMPT_PATH = Path("prompt") / "prompt_influence_filter.j2"
 DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
@@ -383,6 +385,7 @@ def main() -> None:
     fetched_count = len(papers)
     priority_authors = _priority_authors()
     scores_by_id: dict[str, int] = {}
+    author_influence_passed_count: int | None = None
     if priority_authors:
         influence_result = filter_by_author_influence(
             client=influence_client,
@@ -398,8 +401,9 @@ def main() -> None:
             priority_authors=priority_authors,
         )
         scores_by_id = influence_result.scores_by_id
+        author_influence_passed_count = len(influence_result.kept_papers)
         influence_gate_note = (
-            f"Author-influence scoring found {len(influence_result.kept_papers)}/{fetched_count} "
+            f"Author-influence scoring found {author_influence_passed_count}/{fetched_count} "
             f"papers with score >= {influence_score_threshold}."
         )
     else:
@@ -415,12 +419,6 @@ def main() -> None:
         base_arxiv_id(paper.arxiv_id)
         for paper in papers
         if base_arxiv_id(paper.arxiv_id) not in existing_base_ids
-    }
-    author_influence_passed_new_base_ids = {
-        base_arxiv_id(paper.arxiv_id)
-        for paper in papers
-        if base_arxiv_id(paper.arxiv_id) not in existing_base_ids
-        and scores_by_id.get(paper.paper_id, -1) >= influence_score_threshold
     }
     seen_at = utc_now_iso()
     changed_pooled_base_ids = merge_discovered_papers(
@@ -526,14 +524,12 @@ def main() -> None:
             paper_id_to_base_id=scoring_paper_id_to_base_id,
             scores_by_id=scoring_rankings.scores_by_id,
             total_score_by_id=scoring_rankings.total_score_by_id,
-            tldr_by_id=scoring_rankings.tldr_by_id,
         )
     else:
         print("All unsent pooled papers already have current scoring; skipping scoring LLM.")
 
     scores_by_id: dict[str, dict[str, int]] = {}
     total_score_by_id: dict[str, float] = {}
-    tldr_by_id: dict[str, str] = {}
     for paper, record in zip(papers, candidate_records):
         scores = dict(record.get("ranking_scores", {}))
         author_influence_score = author_influence_by_id.get(paper.paper_id)
@@ -545,14 +541,12 @@ def main() -> None:
             ranking_aspects,
             author_influence_score=author_influence_score,
         )
-        tldr_by_id[paper.paper_id] = record.get("ranking_tldr", "")
 
     set_ranking_scores(
         paper_state,
         paper_id_to_base_id=paper_id_to_base_id,
         scores_by_id=scores_by_id,
         total_score_by_id=total_score_by_id,
-        tldr_by_id=tldr_by_id,
     )
     save_paper_state(state_path, paper_state)
     rankings = rank_from_scores(
@@ -560,7 +554,7 @@ def main() -> None:
         top_n=top_n_for_bucket,
         scores_by_id=scores_by_id,
         total_score_by_id=total_score_by_id,
-        tldr_by_id=tldr_by_id,
+        tldr_by_id={},
     )
     print("Ranking complete.")
 
@@ -568,24 +562,48 @@ def main() -> None:
     winner_ids = rankings.final_ranking[:1]
     winner_id = winner_ids[0]
     winner_base_id = paper_id_to_base_id[winner_id]
+    selected_papers = [papers_by_id[paper_id] for paper_id in winner_ids]
+
+    print("Downloading winning paper...")
+    pdf_paths = download_papers(papers_dir, papers, winner_ids)
+    print("Download complete.")
+
+    selected_summary_prompt = load_selected_summary_prompt(DEFAULT_SELECTED_SUMMARY_PROMPT_PATH)
+    print(f"Generating selected-paper summary for {len(selected_papers)} paper(s)...")
+    selected_summaries_by_id = generate_selected_summaries_batch(
+        client=ranking_client,
+        model=ranking_model,
+        prompt_template=selected_summary_prompt,
+        papers=selected_papers,
+        pdf_paths=pdf_paths,
+        paper_text_word_cutoff=transcript_word_cutoff,
+        pricing=ranking_pricing,
+        cost_tracker=cost_tracker,
+        label="Selected summary LLM",
+        openai_timeout=openai_timeout,
+        max_workers=min(4, len(selected_papers)),
+        provider=ranking_provider,
+    )
+    selected_tldr_by_id = {
+        paper_id: summary.get("tldr", "")
+        for paper_id, summary in selected_summaries_by_id.items()
+    }
 
     write_csv(
         run_dir,
         papers_by_id,
         rankings,
-        tldr_by_id=rankings.tldr_by_id,
+        tldr_by_id=selected_tldr_by_id,
         author_influence_by_id=author_influence_by_id,
     )
     write_results_json(
         run_dir,
         papers,
         rankings,
-        tldr_by_id=rankings.tldr_by_id,
+        tldr_by_id=selected_tldr_by_id,
+        summary_sections_by_id=selected_summaries_by_id,
         author_influence_by_id=author_influence_by_id,
     )
-    print("Downloading winning paper...")
-    pdf_paths = download_papers(papers_dir, papers, winner_ids)
-    print("Download complete.")
 
     podcast_paths: list[Path] = []
     transcript_records: list[tuple[str, str, Path]] = []
@@ -670,28 +688,35 @@ def main() -> None:
     if email_enabled:
         total_cost_summary = _format_total_cost(cost_tracker)
         pool_unsent_count = len(candidate_records)
+        author_pass_value = (
+            f"{author_influence_passed_count}/{fetched_count}"
+            if author_influence_passed_count is not None
+            else "skipped"
+        )
         mail_stats = [
             {"label": "Unsent pool", "value": str(pool_unsent_count)},
-            {"label": "Fetched today", "value": str(fetched_count)},
-            {"label": "New today", "value": str(len(obtained_today_base_ids))},
-            {
-                "label": "New author-influence pass",
-                "value": str(len(author_influence_passed_new_base_ids)),
-            },
+            {"label": "Fetched", "value": str(fetched_count)},
+            {"label": "Author pass", "value": author_pass_value},
+            {"label": "New to pool", "value": str(len(obtained_today_base_ids))},
         ]
+        author_pass_line = (
+            f"{author_influence_passed_count} passed author influence; "
+            if author_influence_passed_count is not None
+            else "author influence skipped; "
+        )
         if include_keyword_papers:
             stats_line = (
-                f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count} today; "
-                f"{len(obtained_today_base_ids)} new; "
-                f"{len(author_influence_passed_new_base_ids)} new passed author influence; "
+                f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count}; "
+                f"{author_pass_line}"
+                f"{len(obtained_today_base_ids)} new to pool; "
                 f"pool sources IR {fetch_counts.get('ir', 0)}, CL {fetch_counts.get('cl', 0)}, "
                 f"Keywords {fetch_counts.get('keywords', 0)}."
             )
         else:
             stats_line = (
-                f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count} today; "
-                f"{len(obtained_today_base_ids)} new; "
-                f"{len(author_influence_passed_new_base_ids)} new passed author influence; "
+                f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count}; "
+                f"{author_pass_line}"
+                f"{len(obtained_today_base_ids)} new to pool; "
                 f"pool sources IR {fetch_counts.get('ir', 0)}, CL {fetch_counts.get('cl', 0)} "
                 "(keywords disabled)."
             )
@@ -702,10 +727,17 @@ def main() -> None:
         if influence_gate_note:
             lines.append(influence_gate_note)
         lines.extend([stats_line, "", "Top paper:"])
-        items: list[dict[str, str]] = []
+        items: list[dict] = []
         for rank, paper_id in enumerate(winner_ids, start=1):
             paper = papers_by_id[paper_id]
-            tldr = rankings.tldr_by_id.get(paper_id, "")
+            selected_summary = selected_summaries_by_id.get(paper_id, {})
+            summary_sections = [
+                ("TL;DR", selected_summary.get("tldr", "")),
+                ("Background", selected_summary.get("background", "")),
+                ("Existing problem", selected_summary.get("existing_problem", "")),
+                ("Proposed method", selected_summary.get("proposed_method", "")),
+                ("Results", selected_summary.get("results", "")),
+            ]
             state_record = paper_state["pooled_papers"].get(paper_id_to_base_id[paper_id], {})
             affiliations = state_record.get("affiliations") or "Not specified"
             authors = ", ".join(paper.authors)
@@ -721,8 +753,9 @@ def main() -> None:
             lines.append(f"Affiliations: {affiliations}")
             if published_line:
                 lines.append(f"Published: {published_line}")
-            if tldr:
-                lines.append(f"TL;DR: {tldr}")
+            for section_label, section_text in summary_sections:
+                if section_text:
+                    lines.append(f"{section_label}: {section_text}")
             lines.append(f"Ranking score: {rankings.total_score_by_id.get(paper_id, 0):.1f}")
             ranking_scores = rankings.scores_by_id.get(paper_id, {})
             score_rows = []
@@ -771,7 +804,11 @@ def main() -> None:
                     "authors": authors,
                     "affiliations": affiliations,
                     "published_line": published_line,
-                    "tldr": tldr,
+                    "summary_sections": [
+                        {"label": section_label, "text": section_text}
+                        for section_label, section_text in summary_sections
+                        if section_text
+                    ],
                     "total_score": f"{rankings.total_score_by_id.get(paper_id, 0):.1f}",
                     "score_rows": score_rows,
                 }

@@ -1,0 +1,27 @@
+You are writing concise newsletter notes for one selected arXiv paper.
+
+Return JSON only with exactly these keys:
+"id"
+"tldr"
+"background"
+"existing_problem"
+"proposed_method"
+"results"
+
+Rules:
+- Use the provided paper id exactly.
+- Each field except "id" should be around 50 words.
+- Use plain sentences, no bullets, headings, markdown, or citations.
+- Base the summary only on the provided title, authors, date, abstract, and paper text excerpt.
+- Prefer the paper text excerpt over the abstract when describing methods and results.
+- If the paper text excerpt does not clearly state results, say what was evaluated or claimed without inventing numbers.
+
+PAPER:
+ID: {{ paper.id }}
+Title: {{ paper.title }}
+Authors: {{ paper.authors | join("; ") }}
+Published: {{ paper.published }}
+Abstract: {{ paper.summary }}
+
+Paper text excerpt:
+{{ paper_text }}

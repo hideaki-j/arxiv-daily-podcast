@@ -92,15 +92,14 @@ def _build_score_response_format(aspects: list[RankingAspect]) -> dict:
                     "required": [aspect.key for aspect in aspects],
                     "additionalProperties": False,
                 },
-                "tldr": {"type": "string"},
             },
-            "required": ["id", "scores", "tldr"],
+            "required": ["id", "scores"],
             "additionalProperties": False,
         },
     }
 
 
-def _validate_score_payload(payload: dict, paper_id: str, aspects: list[RankingAspect]) -> tuple[dict[str, int], str]:
+def _validate_score_payload(payload: dict, paper_id: str, aspects: list[RankingAspect]) -> dict[str, int]:
     if payload.get("id") != paper_id:
         raise ValueError(f"Score payload id must be {paper_id}, got {payload.get('id')}")
     raw_scores = payload.get("scores")
@@ -114,10 +113,7 @@ def _validate_score_payload(payload: dict, paper_id: str, aspects: list[RankingA
             raise ValueError(f"Score for {paper_id}.{aspect.key} must be integer 0, 1, or 2")
         scores[aspect.key] = value
 
-    tldr = str(payload.get("tldr", "")).strip()
-    if not tldr:
-        raise ValueError(f"Score payload for {paper_id} missing tldr")
-    return scores, tldr
+    return scores
 
 
 def aggregate_score(
@@ -233,7 +229,7 @@ def rank_papers(
     tldr_by_id: dict[str, str] = {}
     total_score_by_id: dict[str, float] = {}
     for paper, payload in zip(papers, payloads):
-        scores, tldr = _validate_score_payload(payload, paper.paper_id, aspects)
+        scores = _validate_score_payload(payload, paper.paper_id, aspects)
         author_influence_score = None
         if author_influence_by_id:
             raw_score = author_influence_by_id.get(paper.paper_id)
@@ -241,7 +237,6 @@ def rank_papers(
                 author_influence_score = raw_score
                 scores["author_influence_score"] = raw_score
         scores_by_id[paper.paper_id] = scores
-        tldr_by_id[paper.paper_id] = tldr
         total_score_by_id[paper.paper_id] = aggregate_score(
             scores,
             aspects,

@@ -46,58 +46,6 @@ def _extract_gemini_usage(response) -> dict | None:
     }
 
 
-def build_rankings_response_format(top_n: int) -> dict:
-    return {
-        "type": "json_schema",
-        "name": "paper_rankings",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "properties": {
-                "automatic_eval_ranking": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": top_n,
-                    "maxItems": top_n,
-                },
-                "user_simulator_ranking": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": top_n,
-                    "maxItems": top_n,
-                },
-                "final_ranking": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": top_n,
-                    "maxItems": top_n,
-                },
-                "tldr_list": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {"type": "string"},
-                            "tldr": {"type": "string"},
-                        },
-                        "required": ["id", "tldr"],
-                        "additionalProperties": False,
-                    },
-                    "minItems": top_n,
-                    "maxItems": top_n,
-                },
-            },
-            "required": [
-                "automatic_eval_ranking",
-                "user_simulator_ranking",
-                "final_ranking",
-                "tldr_list",
-            ],
-            "additionalProperties": False,
-        },
-    }
-
-
 def _extract_json_payload(response) -> dict:
     if hasattr(response, "output"):
         for item in response.output:
@@ -491,4 +439,3 @@ def batch_call_llm_json(
             idx = futures[future]
             results[idx] = future.result()
     return [result or {} for result in results]
-

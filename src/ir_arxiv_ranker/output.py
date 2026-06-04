@@ -108,6 +108,7 @@ def write_results_json(
     papers: Iterable[Paper],
     rankings: Rankings,
     tldr_by_id: Dict[str, str] | None = None,
+    summary_sections_by_id: Dict[str, dict[str, str]] | None = None,
     author_influence_by_id: Dict[str, int] | None = None,
 ) -> Path:
     payload = {
@@ -129,6 +130,7 @@ def write_results_json(
                 "summary": paper.summary,
                 "pdf_url": paper.pdf_url,
                 "tldr": (tldr_by_id or {}).get(paper.paper_id, ""),
+                "summary_sections": (summary_sections_by_id or {}).get(paper.paper_id, {}),
                 "ranking_total_score": rankings.total_score_by_id.get(paper.paper_id),
                 "ranking_scores": rankings.scores_by_id.get(paper.paper_id, {}),
                 "author_influence_threshold": (

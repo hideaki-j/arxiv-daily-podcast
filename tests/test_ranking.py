@@ -26,12 +26,10 @@ def test_rank_papers_scores_each_paper_and_orders_by_aggregate(monkeypatch):
             {
                 "id": "P1",
                 "scores": {"survey": 2, "legal_domain": 0, "prompting": 1},
-                "tldr": "Paper one summary.",
             },
             {
                 "id": "P2",
                 "scores": {"survey": 0, "legal_domain": 2, "prompting": 1},
-                "tldr": "Paper two summary.",
             },
         ]
 
@@ -65,7 +63,7 @@ def test_rank_papers_scores_each_paper_and_orders_by_aggregate(monkeypatch):
         "prompting": 1,
         "author_influence_score": 5,
     }
-    assert rankings.tldr_by_id["P1"] == "Paper one summary."
+    assert rankings.tldr_by_id == {}
 
 
 def test_rank_from_scores_orders_without_llm_call():

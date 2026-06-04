@@ -210,7 +210,7 @@ def set_ranking_scores(
     paper_id_to_base_id: dict[str, str],
     scores_by_id: dict[str, dict[str, int]],
     total_score_by_id: dict[str, float],
-    tldr_by_id: dict[str, str],
+    tldr_by_id: dict[str, str] | None = None,
 ) -> None:
     pooled_papers = state.setdefault("pooled_papers", {})
     for paper_id, base_id in paper_id_to_base_id.items():
@@ -218,7 +218,8 @@ def set_ranking_scores(
             record = pooled_papers[base_id]
             record["ranking_scores"] = scores_by_id.get(paper_id, {})
             record["ranking_total_score"] = total_score_by_id.get(paper_id)
-            record["ranking_tldr"] = tldr_by_id.get(paper_id, "")
+            if tldr_by_id is not None:
+                record["ranking_tldr"] = tldr_by_id.get(paper_id, "")
             record["ranking_scored_input_hash"] = record.get("ranking_input_hash")
 
 
@@ -229,8 +230,6 @@ def needs_ranking_score(record: dict, aspect_keys: Iterable[str]) -> bool:
     if any(not isinstance(scores.get(key), int) for key in aspect_keys):
         return True
     if record.get("ranking_total_score") is None:
-        return True
-    if not record.get("ranking_tldr"):
         return True
     return record.get("ranking_scored_input_hash") != record.get("ranking_input_hash")
 

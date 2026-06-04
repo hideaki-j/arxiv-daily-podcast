@@ -8,12 +8,10 @@ Score each aspect on a 0/1/2 Likert scale:
 Return JSON only with exactly these keys:
 "id"
 "scores"
-"tldr"
 
 Rules:
 - Use the provided paper id exactly.
 - "scores" must contain every aspect key listed below, with integer values 0, 1, or 2.
-- "tldr" should be ~50 words, plain sentences, no bullets or headings.
 - Base judgments only on the provided title, authors, date, and abstract.
 
 Aspects:
