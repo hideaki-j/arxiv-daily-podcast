@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,8 +11,6 @@ from jinja2 import Environment, StrictUndefined
 from openai import OpenAI
 
 from utils.costs import CostTracker
-from utils.timezone import format_toronto_time
-
 from .affiliations import extract_affiliations_batch
 from .arxiv_client import fetch_keyword_papers, fetch_recent_papers
 from .config import load_config
@@ -40,7 +38,6 @@ from .paper_state import (
     set_affiliations,
     utc_now_iso,
 )
-from .schedule import last_scheduled_run, load_workflow_cron_schedules
 from .selected_summary import generate_selected_summaries_batch, load_selected_summary_prompt
 from .tts import batch_synthesize_podcast
 from .ranking import aggregate_score, load_ranking_aspects, rank_from_scores, rank_papers
@@ -55,7 +52,6 @@ DEFAULT_MANGA_PROMPT_PATH = Path("prompt") / "prompt_manga.j2"
 DEFAULT_MANGA_PLANNER_PROMPT_PATH = Path("prompt") / "prompt_manga_planner.j2"
 DEFAULT_NEWSLETTER_TEMPLATE = Path("template") / "newsletter.j2"
 DEFAULT_SELECTED_SUMMARY_PROMPT_PATH = Path("prompt") / "prompt_selected_summary.j2"
-DEFAULT_WORKFLOW_PATH = Path(".github") / "workflows" / "arxiv-newsletter.yml"
 DEFAULT_INFLUENCE_PROMPT_PATH = Path("prompt") / "prompt_influence_filter.j2"
 DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
 DEFAULT_STATE_PATH = Path("state") / "discovered_papers.json"
@@ -69,6 +65,16 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_CONFIG_PATH,
         help="Path to YAML config file",
+    )
+    parser.add_argument(
+        "--stage",
+        choices=("all", "fetch-score", "publish"),
+        default="all",
+        help=(
+            "Pipeline stage to run: fetch-score discovers arXiv papers and stores "
+            "ranking scores; publish reads stored papers and generates the newsletter, "
+            "transcript/audio, and image."
+        ),
     )
     return parser.parse_args()
 
@@ -133,9 +139,12 @@ def _parse_iso_datetime(value: str) -> datetime | None:
         return None
     cleaned = value.replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(cleaned)
+        parsed = datetime.fromisoformat(cleaned)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _paper_datetime(paper) -> datetime | None:
@@ -178,6 +187,48 @@ def _records_after_sending(records: list[dict], sent_base_ids: set[str]) -> list
         for record in records
         if record.get("base_arxiv_id") not in sent_base_ids
     ]
+
+
+def _unsent_pool_statistics(
+    records: list[dict],
+    influence_threshold: int,
+    now: datetime | None = None,
+) -> dict[str, int]:
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    cutoff_24h = current_time - timedelta(hours=24)
+    cutoff_7d = current_time - timedelta(days=7)
+
+    fetched_24h = 0
+    unique_added_24h = 0
+    added_7d = 0
+    author_pass = 0
+
+    for record in records:
+        last_seen_at = _parse_iso_datetime(record.get("last_seen_at", ""))
+        first_seen_at = _parse_iso_datetime(record.get("first_seen_at", ""))
+
+        fetched_recently = bool(last_seen_at and last_seen_at >= cutoff_24h)
+        added_recently = bool(first_seen_at and first_seen_at >= cutoff_24h)
+        if fetched_recently:
+            fetched_24h += 1
+        if fetched_recently and added_recently:
+            unique_added_24h += 1
+        if first_seen_at and first_seen_at >= cutoff_7d:
+            added_7d += 1
+
+        score = record.get("influence_score")
+        if isinstance(score, int) and score >= influence_threshold:
+            author_pass += 1
+
+    return {
+        "unsent_pool_total": len(records),
+        "fetched_24h": fetched_24h,
+        "unique_added_24h": unique_added_24h,
+        "added_7d": added_7d,
+        "author_pass": author_pass,
+    }
 
 
 def _score_contribution(score: int, weight: float, polarity: str) -> float:
@@ -238,6 +289,8 @@ def _select_by_date_cascade(papers: list, min_count: int) -> tuple[list, tuple[s
 def main() -> None:
     load_dotenv()
     args = _parse_args()
+    run_fetch_score = args.stage in {"all", "fetch-score"}
+    run_publish = args.stage in {"all", "publish"}
 
     settings = load_config(args.config)
     cost_tracker = CostTracker()
@@ -291,15 +344,13 @@ def main() -> None:
     influence_pricing = pricing_data.get(influence_filter_model, {}) or {}
     affiliation_pricing = pricing_data.get(affiliation_model, {}) or {}
 
-    if email_enabled:
+    if email_enabled and run_publish:
         gmail_address = os.getenv("GMAIL_ADDRESS")
         gmail_password = os.getenv("GMAIL_APP_PASSWORD")
         if not gmail_address or not gmail_password:
             raise SystemExit("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set in .env")
 
-    last_scheduled_time: datetime | None = None
     fallback_note: str | None = None
-    last_scheduled_datetime_str: str | None = None
     if filter_since_last_schedule:
         print(
             "filter_since_last_schedule is ignored in bucket mode; "
@@ -390,12 +441,14 @@ def main() -> None:
     ranking_provider = settings.ranking.provider
     affiliation_provider = settings.affiliation.provider
 
-    if (
-        influence_provider == "gemini"
-        or ranking_provider == "gemini"
-        or affiliation_provider == "gemini"
-        or manga_planner_provider == "gemini"
-    ):
+    needs_gemini = (
+        ranking_provider == "gemini"
+        or (run_fetch_score and influence_provider == "gemini")
+        or (run_fetch_score and affiliation_provider == "gemini")
+        or (run_publish and podcast_provider == "gemini")
+        or (run_publish and manga_planner_provider == "gemini")
+    )
+    if needs_gemini:
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise SystemExit("GEMINI_API_KEY or GOOGLE_API_KEY must be set for Gemini provider")
@@ -407,106 +460,120 @@ def main() -> None:
     podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
     manga_planner_client = gemini_client if manga_planner_provider == "gemini" else openai_client
 
-    # Stage 1: fetch without date filtering, then score author influence for new metadata.
-    papers, _ = fetch_all(None, include_keywords=include_keyword_papers)
-    fetched_count = len(papers)
     state_path = _state_path()
     paper_state = load_paper_state(state_path)
-    existing_base_ids = set(paper_state.get("pooled_papers", {}))
-    new_papers = [
-        paper
-        for paper in papers
-        if base_arxiv_id(paper.arxiv_id) not in existing_base_ids
-    ]
-    obtained_today_base_ids = {base_arxiv_id(paper.arxiv_id) for paper in new_papers}
-    priority_authors = _priority_authors()
-    scores_by_id: dict[str, int] = {}
+    run_dir = None
+    papers_dir = None
+    transcript_dir = None
+    podcast_dir = None
+    newsletter_dir = None
+    fetched_count = 0
+    new_pool_count = 0
     author_influence_passed_count: int | None = None
-    if priority_authors and new_papers:
-        influence_result = filter_by_author_influence(
-            client=influence_client,
-            model=influence_filter_model,
-            prompt_template=influence_prompt_template,
-            papers=new_papers,
-            threshold=influence_score_threshold,
-            max_workers=influence_max_workers,
-            pricing=influence_pricing,
-            cost_tracker=cost_tracker,
-            openai_timeout=openai_timeout,
-            provider=influence_provider,
-            priority_authors=priority_authors,
-        )
-        scores_by_id = influence_result.scores_by_id
-        author_influence_passed_count = len(influence_result.kept_papers)
-        influence_gate_note = (
-            f"Author-influence scoring checked {len(new_papers)} new/{fetched_count} fetched "
-            f"papers and found {author_influence_passed_count} with score >= "
-            f"{influence_score_threshold}."
-        )
-    elif priority_authors:
-        influence_gate_note = (
-            "Author-influence scoring skipped because all fetched papers already exist "
-            "in the bucket; existing scores were reused."
-        )
-    else:
-        influence_gate_note = (
-            "Author-influence scoring skipped because PRIORITY_AUTHORS is empty; "
-            "new papers were pooled without author-influence scores."
-        )
+    influence_gate_note: str | None = None
 
-    seen_at = utc_now_iso()
-    changed_pooled_base_ids = merge_discovered_papers(
-        paper_state,
-        papers,
-        scores_by_id=scores_by_id,
-        seen_at=seen_at,
-    )
-    save_paper_state(state_path, paper_state)
-
-    run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
-
-    if changed_pooled_base_ids:
-        papers_by_base_id = {base_arxiv_id(paper.arxiv_id): paper for paper in papers}
-        affiliation_papers = [
-            papers_by_base_id[base_id]
-            for base_id in changed_pooled_base_ids
-            if base_id in papers_by_base_id
+    if run_fetch_score:
+        # Stage 1: fetch from arXiv, enrich/score the pool, and persist state.
+        papers, _ = fetch_all(None, include_keywords=include_keyword_papers)
+        fetched_count = len(papers)
+        existing_base_ids = set(paper_state.get("pooled_papers", {}))
+        new_papers = [
+            paper
+            for paper in papers
+            if base_arxiv_id(paper.arxiv_id) not in existing_base_ids
         ]
-        if affiliation_papers:
-            print(f"Extracting affiliations for {len(affiliation_papers)} bucket paper(s)...")
-            affiliation_pdf_paths = download_papers(
-                papers_dir,
-                affiliation_papers,
-                [paper.paper_id for paper in affiliation_papers],
-            )
-            affiliations_by_paper_id = extract_affiliations_batch(
-                client=affiliation_client,
-                model=affiliation_model,
-                papers=affiliation_papers,
-                pdf_paths=affiliation_pdf_paths,
-                pricing=affiliation_pricing,
+        new_pool_count = len(new_papers)
+        priority_authors = _priority_authors()
+        influence_scores_by_id: dict[str, int] = {}
+        if priority_authors and new_papers:
+            influence_result = filter_by_author_influence(
+                client=influence_client,
+                model=influence_filter_model,
+                prompt_template=influence_prompt_template,
+                papers=new_papers,
+                threshold=influence_score_threshold,
+                max_workers=influence_max_workers,
+                pricing=influence_pricing,
                 cost_tracker=cost_tracker,
-                token_limit=AFFILIATION_TOKEN_LIMIT,
                 openai_timeout=openai_timeout,
-                max_workers=min(4, len(affiliation_papers)),
-                provider=affiliation_provider,
+                provider=influence_provider,
+                priority_authors=priority_authors,
             )
-            set_affiliations(
-                paper_state,
-                {
-                    base_arxiv_id(paper.arxiv_id): affiliations_by_paper_id.get(
-                        paper.paper_id, "Not specified"
-                    )
-                    for paper in affiliation_papers
-                },
+            influence_scores_by_id = influence_result.scores_by_id
+            author_influence_passed_count = len(influence_result.kept_papers)
+            influence_gate_note = (
+                f"Author-influence scoring checked {new_pool_count} new/{fetched_count} "
+                f"fetched papers and found {author_influence_passed_count} with score >= "
+                f"{influence_score_threshold}."
             )
-    save_paper_state(state_path, paper_state)
-    print(f"Saved paper bucket state to {state_path}")
+        elif priority_authors:
+            influence_gate_note = (
+                "Author-influence scoring skipped because all fetched papers already exist "
+                "in the bucket; existing scores were reused."
+            )
+        else:
+            influence_gate_note = (
+                "Author-influence scoring skipped because PRIORITY_AUTHORS is empty; "
+                "new papers were pooled without author-influence scores."
+            )
+
+        seen_at = utc_now_iso()
+        changed_pooled_base_ids = merge_discovered_papers(
+            paper_state,
+            papers,
+            scores_by_id=influence_scores_by_id,
+            seen_at=seen_at,
+        )
+        save_paper_state(state_path, paper_state)
+
+        if changed_pooled_base_ids:
+            run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
+            papers_by_base_id = {base_arxiv_id(paper.arxiv_id): paper for paper in papers}
+            affiliation_papers = [
+                papers_by_base_id[base_id]
+                for base_id in changed_pooled_base_ids
+                if base_id in papers_by_base_id
+            ]
+            if affiliation_papers:
+                print(f"Extracting affiliations for {len(affiliation_papers)} bucket paper(s)...")
+                affiliation_pdf_paths = download_papers(
+                    papers_dir,
+                    affiliation_papers,
+                    [paper.paper_id for paper in affiliation_papers],
+                )
+                affiliations_by_paper_id = extract_affiliations_batch(
+                    client=affiliation_client,
+                    model=affiliation_model,
+                    papers=affiliation_papers,
+                    pdf_paths=affiliation_pdf_paths,
+                    pricing=affiliation_pricing,
+                    cost_tracker=cost_tracker,
+                    token_limit=AFFILIATION_TOKEN_LIMIT,
+                    openai_timeout=openai_timeout,
+                    max_workers=min(4, len(affiliation_papers)),
+                    provider=affiliation_provider,
+                )
+                set_affiliations(
+                    paper_state,
+                    {
+                        base_arxiv_id(paper.arxiv_id): affiliations_by_paper_id.get(
+                            paper.paper_id, "Not specified"
+                        )
+                        for paper in affiliation_papers
+                    },
+                )
+        save_paper_state(state_path, paper_state)
+        print(f"Saved paper bucket state to {state_path}")
+    elif run_publish:
+        influence_gate_note = (
+            "Generated from stored paper-state pool; arXiv fetch and scoring run separately."
+        )
 
     candidate_records = pooled_records(paper_state)
     if not candidate_records:
         print("No pooled papers available; skipping ranking and email.")
-        print(f"Saved results to {run_dir}")
+        if run_dir is not None:
+            print(f"Saved results to {run_dir}")
         print(f"Total estimated cost: {_format_total_cost(cost_tracker)}.")
         return
 
@@ -522,8 +589,7 @@ def main() -> None:
     scoring_items = [
         (paper, record)
         for paper, record in zip(papers, candidate_records)
-        if record.get("base_arxiv_id") in obtained_today_base_ids
-        and needs_ranking_score(record, aspect_keys)
+        if run_fetch_score and needs_ranking_score(record, aspect_keys)
     ]
     if scoring_items:
         scoring_papers = [paper for paper, _ in scoring_items]
@@ -560,7 +626,10 @@ def main() -> None:
             total_score_by_id=scoring_rankings.total_score_by_id,
         )
     else:
-        print("No newly pooled papers need ranking scoring; reusing existing scores.")
+        if run_fetch_score:
+            print("No pooled papers need ranking scoring; reusing existing scores.")
+        else:
+            print("Reusing stored ranking scores.")
 
     scores_by_id: dict[str, dict[str, int]] = {}
     total_score_by_id: dict[str, float] = {}
@@ -583,6 +652,12 @@ def main() -> None:
         total_score_by_id=total_score_by_id,
     )
     save_paper_state(state_path, paper_state)
+    if not run_publish:
+        if run_dir is not None:
+            print(f"Saved results to {run_dir}")
+        print(f"Total estimated cost: {_format_total_cost(cost_tracker)}.")
+        return
+
     rankings = rank_from_scores(
         papers=papers,
         top_n=top_n_for_bucket,
@@ -591,6 +666,9 @@ def main() -> None:
         tldr_by_id={},
     )
     print("Ranking complete.")
+
+    if run_dir is None:
+        run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
 
     papers_by_id = {paper.paper_id: paper for paper in papers}
     winner_ids = rankings.final_ranking[:1]
@@ -785,44 +863,33 @@ def main() -> None:
 
     if email_enabled:
         total_cost_summary = _format_total_cost(cost_tracker)
-        post_send_candidate_records = _records_after_sending(candidate_records, winner_base_ids)
-        post_send_fetch_counts = _count_record_sources(post_send_candidate_records)
-        pool_unsent_count = len(post_send_candidate_records)
-        new_pool_count = len(obtained_today_base_ids)
-        author_pass_value = (
-            f"{author_influence_passed_count}/{new_pool_count} new"
-            if author_influence_passed_count is not None
-            else "skipped"
+        pool_stats = _unsent_pool_statistics(
+            candidate_records,
+            influence_threshold=influence_score_threshold,
         )
         mail_stats = [
-            {"label": "Unsent pool", "value": str(pool_unsent_count)},
-            {"label": "Fetched", "value": str(fetched_count)},
-            {"label": "Author pass", "value": author_pass_value},
-            {"label": "New to pool", "value": str(new_pool_count)},
+            {"label": "Unsent pool", "value": str(pool_stats["unsent_pool_total"])},
+            {"label": "Fetched 24h", "value": str(pool_stats["fetched_24h"])},
+            {
+                "label": "Unique 24h",
+                "value": f"{pool_stats['unique_added_24h']}/{pool_stats['fetched_24h']}",
+            },
+            {"label": "Added 7d", "value": str(pool_stats["added_7d"])},
+            {
+                "label": "Author pass",
+                "value": (
+                    f"{pool_stats['author_pass']}/{pool_stats['unsent_pool_total']}"
+                ),
+            },
         ]
-        author_pass_line = (
-            f"{author_influence_passed_count}/{new_pool_count} new passed author influence; "
-            if author_influence_passed_count is not None
-            else "author influence skipped; "
+        stats_line = (
+            f"Stats: {pool_stats['unsent_pool_total']} unsent in pool; "
+            f"{pool_stats['fetched_24h']} fetched in the last 24h; "
+            f"{pool_stats['unique_added_24h']} unique additions from those 24h fetches; "
+            f"{pool_stats['added_7d']} added in the last 7d; "
+            f"{pool_stats['author_pass']}/{pool_stats['unsent_pool_total']} "
+            f"current unsent papers pass author influence >= {influence_score_threshold}."
         )
-        if include_keyword_papers:
-            stats_line = (
-                f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count}; "
-                f"{author_pass_line}"
-                f"{new_pool_count} new to pool; "
-                f"pool sources IR {post_send_fetch_counts.get('ir', 0)}, "
-                f"CL {post_send_fetch_counts.get('cl', 0)}, "
-                f"Keywords {post_send_fetch_counts.get('keywords', 0)}."
-            )
-        else:
-            stats_line = (
-                f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count}; "
-                f"{author_pass_line}"
-                f"{new_pool_count} new to pool; "
-                f"pool sources IR {post_send_fetch_counts.get('ir', 0)}, "
-                f"CL {post_send_fetch_counts.get('cl', 0)} "
-                "(keywords disabled)."
-            )
 
         lines: list[str] = []
         if fallback_note:

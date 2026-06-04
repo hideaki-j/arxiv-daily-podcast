@@ -1,50 +1,68 @@
-name: ArXiv Newsletter
-
-run-name: ArXiv Newsletter scheduled ${{ inputs.scheduler_cycle || 'manual' }} attempt ${{ inputs.scheduler_attempt || 'manual' }}
+name: ArXiv Publish Newsletter
 
 on:
+  schedule:
+    # GitHub cron is UTC. These two hours cover 10:00 America/Toronto in both
+    # EDT and EST; the first step gates execution to the local 10 AM hour.
+    - cron: "0 14,15 * * *"
   workflow_dispatch:
-    inputs:
-      scheduler_cycle:
-        description: "Scheduler cycle date in UTC (YYYY-MM-DD). Empty for manual runs."
-        required: false
-        type: string
-      scheduler_attempt:
-        description: "Scheduler attempt number. Empty for manual runs."
-        required: false
-        type: string
 
 concurrency:
   group: paper-state
   cancel-in-progress: false
 
 jobs:
-  run:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Check publish time
+        id: schedule_gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          if os.environ["EVENT_NAME"] != "schedule":
+              print("should_run=true")
+              raise SystemExit(0)
+
+          now = datetime.now(ZoneInfo("America/Toronto"))
+          print(f"toronto_time={now.isoformat()}")
+          print(f"should_run={'true' if now.hour == 10 else 'false'}")
+          PY
       - name: Checkout app
+        if: steps.schedule_gate.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           ref: master
           path: app
       - name: Checkout paper state
+        if: steps.schedule_gate.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           ref: paper-state
           path: paper-state
       - uses: actions/setup-python@v5
+        if: steps.schedule_gate.outputs.should_run == 'true'
         with:
           python-version: "3.11"
       - name: Install ffmpeg
+        if: steps.schedule_gate.outputs.should_run == 'true'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install uv
+        if: steps.schedule_gate.outputs.should_run == 'true'
         run: python -m pip install --upgrade pip && pip install uv
       - name: Install dependencies
+        if: steps.schedule_gate.outputs.should_run == 'true'
         working-directory: app
         run: uv sync --frozen
       - name: Create .env
+        if: steps.schedule_gate.outputs.should_run == 'true'
         working-directory: app
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -52,7 +70,6 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PRIORITY_AUTHORS: ${{ secrets.PRIORITY_AUTHORS }}
         run: |
           python - <<'PY'
           import os
@@ -64,22 +81,22 @@ jobs:
               "GMAIL_APP_PASSWORD",
               "OPENROUTER_API_KEY",
               "GEMINI_API_KEY",
-              "PRIORITY_AUTHORS",
           ]
           lines = [f"{key}={os.environ[key]}" for key in keys if os.environ.get(key)]
           Path(".env").write_text("\n".join(lines) + "\n")
           PY
-      - name: Run newsletter
+      - name: Publish newsletter
+        if: steps.schedule_gate.outputs.should_run == 'true'
         working-directory: app
         env:
           PAPER_STATE_PATH: ../paper-state/state/discovered_papers.json
-        run: uv run -m ir_arxiv_ranker --config my_config/config.yaml
+        run: uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
       - name: Commit updated paper state
-        if: always()
+        if: always() && steps.schedule_gate.outputs.should_run == 'true'
         working-directory: paper-state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state/discovered_papers.json
-          git diff --cached --quiet || git commit -m "Update discovered paper state"
+          git diff --cached --quiet || git commit -m "Update sent paper state"
           git push
