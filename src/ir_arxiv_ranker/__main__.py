@@ -18,6 +18,7 @@ from .arxiv_client import fetch_keyword_papers, fetch_recent_papers
 from .config import load_config
 from .influence_filter import filter_by_author_influence
 from .emailer import send_email
+from .manga_image import generate_manga_image, load_manga_prompt
 from .output import (
     create_run_dir,
     download_papers,
@@ -50,6 +51,7 @@ MAX_EMAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024
 DEFAULT_CONFIG_PATH = Path("my_config") / "config.yaml"
 DEFAULT_SCORING_PROMPT_PATH = Path("prompt") / "prompt_scoring.j2"
 DEFAULT_PODCAST_PROMPT_PATH = Path("prompt") / "prompt_podcast.j2"
+DEFAULT_MANGA_PROMPT_PATH = Path("prompt") / "prompt_manga.j2"
 DEFAULT_NEWSLETTER_TEMPLATE = Path("template") / "newsletter.j2"
 DEFAULT_SELECTED_SUMMARY_PROMPT_PATH = Path("prompt") / "prompt_selected_summary.j2"
 DEFAULT_WORKFLOW_PATH = Path(".github") / "workflows" / "arxiv-newsletter.yml"
@@ -243,6 +245,10 @@ def main() -> None:
     ranking_provider = settings.ranking.provider
     podcast_model = settings.podcast.model
     podcast_provider = settings.podcast.provider
+    manga_image_model = settings.manga_image.model
+    manga_image_size = settings.manga_image.size
+    manga_image_quality = settings.manga_image.quality
+    manga_image_output_format = settings.manga_image.output_format
     influence_filter_model = settings.influence_filter.model
     affiliation_model = settings.affiliation.model
     ir_limit = settings.ir_limit
@@ -255,6 +261,7 @@ def main() -> None:
     abst_word_cutoff = settings.abst_word_cutoff
     transcript_word_cutoff = settings.transcript_word_cutoff
     generate_transcript_flag = settings.generate_transcript
+    generate_manga_image_flag = settings.generate_manga_image
     filter_since_last_schedule = settings.filter_since_last_schedule
     use_tts = settings.use_tts
     tts_provider = settings.tts.provider if settings.tts else None
@@ -274,6 +281,7 @@ def main() -> None:
     gmail_password = None
     ranking_pricing = pricing_data.get(ranking_model, {}) or {}
     podcast_pricing = pricing_data.get(podcast_model, {}) or {}
+    manga_image_pricing = pricing_data.get(manga_image_model, {}) or {}
     tts_pricing = pricing_data.get(tts_model, {}) or {} if tts_model else {}
     influence_pricing = pricing_data.get(influence_filter_model, {}) or {}
     affiliation_pricing = pricing_data.get(affiliation_model, {}) or {}
@@ -614,7 +622,33 @@ def main() -> None:
     )
 
     podcast_paths: list[Path] = []
+    manga_image_paths: list[Path] = []
     transcript_records: list[tuple[str, str, Path]] = []
+    if generate_manga_image_flag:
+        manga_prompt = load_manga_prompt(DEFAULT_MANGA_PROMPT_PATH)
+        manga_dir = run_dir / "manga"
+        print("Generating manga image for winning paper...")
+        manga_image_paths.append(
+            generate_manga_image(
+                client=openai_client,
+                model=manga_image_model,
+                prompt_template=manga_prompt,
+                paper=selected_papers[0],
+                pdf_path=pdf_paths[0],
+                image_dir=manga_dir,
+                rank=1,
+                size=manga_image_size,
+                quality=manga_image_quality,
+                output_format=manga_image_output_format,
+                pricing=manga_image_pricing,
+                cost_tracker=cost_tracker,
+                timeout=openai_timeout,
+            )
+        )
+        print("Manga image complete.")
+    else:
+        print("Manga image generation disabled.")
+
     if generate_transcript_flag:
         podcast_prompt = load_podcast_prompt(DEFAULT_PODCAST_PROMPT_PATH)
         transcript_ids = winner_ids if top_n_tts > 0 else []
@@ -838,7 +872,8 @@ def main() -> None:
             total_cost=total_cost_summary,
         )
         write_newsletter_html(newsletter_dir, html_body, "newsletter.html")
-        attachments = podcast_paths if podcast_paths else None
+        all_attachments = manga_image_paths + podcast_paths
+        attachments = all_attachments if all_attachments else None
         if attachments:
             attachments = _trim_attachments_by_size(
                 attachments, MAX_EMAIL_ATTACHMENT_BYTES

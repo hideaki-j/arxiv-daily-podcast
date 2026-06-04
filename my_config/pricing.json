@@ -5,6 +5,14 @@
     "cached_input_usd_per_1m_tokens": 0.5,
     "output_usd_per_1m_tokens": 30.0
   },
+  "gpt-image-2": {
+    "provider": "openai",
+    "text_input_usd_per_1m_tokens": 5.0,
+    "text_cached_input_usd_per_1m_tokens": 1.25,
+    "image_input_usd_per_1m_tokens": 8.0,
+    "image_cached_input_usd_per_1m_tokens": 2.0,
+    "image_output_usd_per_1m_tokens": 30.0
+  },
   "gpt-5-2025-08-07": {
     "provider": "openai",
     "input_usd_per_1m_tokens": 1.25,

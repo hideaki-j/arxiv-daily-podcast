@@ -21,12 +21,22 @@ class TTSConfig:
 
 
 @dataclass(frozen=True)
+class ImageConfig:
+    provider: str
+    model: str
+    size: str
+    quality: str
+    output_format: str
+
+
+@dataclass(frozen=True)
 class Settings:
     ranking: LLMCallConfig
     podcast: LLMCallConfig
     influence_filter: LLMCallConfig
     affiliation: LLMCallConfig
     tts: TTSConfig | None
+    manga_image: ImageConfig
     compress_to_64kbps: bool
     pricing_data: dict
     ir_limit: int
@@ -39,6 +49,7 @@ class Settings:
     abst_word_cutoff: int
     transcript_word_cutoff: int | None
     generate_transcript: bool
+    generate_manga_image: bool
     filter_since_last_schedule: bool
     use_tts: bool
     email_enabled: bool
@@ -77,6 +88,33 @@ def _parse_tts_config(raw: dict | None) -> TTSConfig:
     return TTSConfig(provider=provider, model=model, voice=voice)
 
 
+def _parse_image_config(raw: dict | None) -> ImageConfig:
+    if not raw or not isinstance(raw, dict):
+        raise SystemExit("Config must include 'manga_image' section")
+    provider = raw.get("provider")
+    model = raw.get("model")
+    size = raw.get("size", "1536x1024")
+    quality = raw.get("quality", "high")
+    output_format = raw.get("output_format", "png")
+    if provider != "openai":
+        raise SystemExit("manga_image.provider must be 'openai'")
+    if not model or not isinstance(model, str):
+        raise SystemExit("manga_image.model must be a non-empty string")
+    if not isinstance(size, str) or not size:
+        raise SystemExit("manga_image.size must be a non-empty string")
+    if quality not in {"low", "medium", "high", "auto"}:
+        raise SystemExit("manga_image.quality must be low, medium, high, or auto")
+    if output_format not in {"png", "jpeg", "webp"}:
+        raise SystemExit("manga_image.output_format must be png, jpeg, or webp")
+    return ImageConfig(
+        provider=provider,
+        model=model,
+        size=size,
+        quality=quality,
+        output_format=output_format,
+    )
+
+
 def load_config(config_path: Path) -> Settings:
     if not config_path.exists():
         raise SystemExit(f"Config file not found: {config_path}")
@@ -89,6 +127,7 @@ def load_config(config_path: Path) -> Settings:
     podcast = _parse_llm_call_config(raw_config.get("podcast"), "podcast")
     influence_filter = _parse_llm_call_config(raw_config.get("influence_filter"), "influence_filter")
     affiliation = _parse_llm_call_config(raw_config.get("affiliation"), "affiliation")
+    manga_image = _parse_image_config(raw_config.get("manga_image"))
 
     # Parse other settings
     ir_limit = raw_config.get("ir_limit")
@@ -100,6 +139,7 @@ def load_config(config_path: Path) -> Settings:
     abst_word_cutoff = raw_config.get("abst_word_cutoff")
     transcript_word_cutoff = raw_config.get("transcript_word_cutoff")
     generate_transcript = raw_config.get("generate_transcript", True)
+    generate_manga_image = raw_config.get("generate_manga_image", True)
     filter_since_last_schedule = raw_config.get("filter_since_last_schedule", False)
     use_tts = raw_config.get("use_tts", True)
     include_keyword_papers = raw_config.get("include_keyword_papers", True)
@@ -122,6 +162,8 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("email_enabled must be a boolean")
     if not isinstance(generate_transcript, bool):
         raise SystemExit("generate_transcript must be a boolean")
+    if not isinstance(generate_manga_image, bool):
+        raise SystemExit("generate_manga_image must be a boolean")
     if not isinstance(compress_to_64kbps, bool):
         raise SystemExit("compress_to_64kbps must be a boolean")
     if not isinstance(include_keyword_papers, bool):
@@ -217,6 +259,7 @@ def load_config(config_path: Path) -> Settings:
         influence_filter=influence_filter,
         affiliation=affiliation,
         tts=tts,
+        manga_image=manga_image,
         compress_to_64kbps=compress_to_64kbps,
         pricing_data=pricing_data,
         ir_limit=ir_limit,
@@ -229,6 +272,7 @@ def load_config(config_path: Path) -> Settings:
         abst_word_cutoff=abst_word_cutoff,
         transcript_word_cutoff=transcript_word_cutoff,
         generate_transcript=generate_transcript,
+        generate_manga_image=generate_manga_image,
         filter_since_last_schedule=filter_since_last_schedule,
         use_tts=use_tts,
         email_enabled=email_enabled,
