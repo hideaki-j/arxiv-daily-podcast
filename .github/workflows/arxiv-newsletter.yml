@@ -1,11 +1,18 @@
 name: ArXiv Newsletter
 
+run-name: ArXiv Newsletter scheduled ${{ inputs.scheduler_cycle || 'manual' }} attempt ${{ inputs.scheduler_attempt || 'manual' }}
+
 on:
-  schedule:
-    # Runs Monday-Friday at 08:00 Toronto time (EST) or 09:00 (EDT).
-    # GitHub schedules use UTC; 13:00 UTC = 08:00 EST / 09:00 EDT.
-    - cron: "0 13 * * 1-5"
   workflow_dispatch:
+    inputs:
+      scheduler_cycle:
+        description: "Scheduler cycle date in UTC (YYYY-MM-DD). Empty for manual runs."
+        required: false
+        type: string
+      scheduler_attempt:
+        description: "Scheduler attempt number. Empty for manual runs."
+        required: false
+        type: string
 
 concurrency:
   group: paper-state
