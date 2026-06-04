@@ -27,6 +27,7 @@ class ImageConfig:
     size: str
     quality: str
     output_format: str
+    word_cutoff: int | None
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,7 @@ def _parse_image_config(raw: dict | None) -> ImageConfig:
     size = raw.get("size", "1536x1024")
     quality = raw.get("quality", "high")
     output_format = raw.get("output_format", "png")
+    word_cutoff = raw.get("word_cutoff", 8000)
     if provider != "openai":
         raise SystemExit("manga_image.provider must be 'openai'")
     if not model or not isinstance(model, str):
@@ -106,12 +108,16 @@ def _parse_image_config(raw: dict | None) -> ImageConfig:
         raise SystemExit("manga_image.quality must be low, medium, high, or auto")
     if output_format not in {"png", "jpeg", "webp"}:
         raise SystemExit("manga_image.output_format must be png, jpeg, or webp")
+    if word_cutoff is not None:
+        if not isinstance(word_cutoff, int) or word_cutoff < 1:
+            raise SystemExit("manga_image.word_cutoff must be an integer >= 1 or null")
     return ImageConfig(
         provider=provider,
         model=model,
         size=size,
         quality=quality,
         output_format=output_format,
+        word_cutoff=word_cutoff,
     )
 
 

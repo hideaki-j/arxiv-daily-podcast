@@ -249,6 +249,7 @@ def main() -> None:
     manga_image_size = settings.manga_image.size
     manga_image_quality = settings.manga_image.quality
     manga_image_output_format = settings.manga_image.output_format
+    manga_image_word_cutoff = settings.manga_image.word_cutoff
     influence_filter_model = settings.influence_filter.model
     affiliation_model = settings.affiliation.model
     ir_limit = settings.ir_limit
@@ -641,6 +642,7 @@ def main() -> None:
                     size=manga_image_size,
                     quality=manga_image_quality,
                     output_format=manga_image_output_format,
+                    word_cutoff=manga_image_word_cutoff,
                     pricing=manga_image_pricing,
                     cost_tracker=cost_tracker,
                     timeout=openai_timeout,

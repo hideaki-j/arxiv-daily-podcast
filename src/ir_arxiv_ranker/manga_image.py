@@ -9,7 +9,7 @@ from utils.costs import CostTracker
 from utils.naming import build_file_stem
 
 from .models import Paper
-from .podcast import _extract_pdf_text
+from .podcast import _extract_pdf_text, _truncate_words
 
 
 def load_manga_prompt(path: Path) -> str:
@@ -93,11 +93,12 @@ def generate_manga_image(
     size: str,
     quality: str,
     output_format: str,
+    word_cutoff: int | None = 8000,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
     timeout: int | None = None,
 ) -> Path:
-    paper_text = _extract_pdf_text(pdf_path)
+    paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
     prompt = _render_prompt(prompt_template, paper, paper_text, model)
     result = client.images.generate(
         model=model,
