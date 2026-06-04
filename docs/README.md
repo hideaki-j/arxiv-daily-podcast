@@ -95,6 +95,9 @@ Required in `.env` when email is enabled:
 - `GMAIL_ADDRESS`
 - `GMAIL_APP_PASSWORD`
 
+Optional priority-author boost:
+- `PRIORITY_AUTHORS` - semicolon-delimited canonical author names.
+
 ## Project Structure
 
 ```

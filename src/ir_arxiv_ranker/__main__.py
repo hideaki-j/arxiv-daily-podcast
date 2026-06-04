@@ -26,6 +26,18 @@ from .output import (
     write_results_json,
 )
 from .podcast import generate_transcripts_batch, load_podcast_prompt, write_transcript
+from .paper_state import (
+    base_arxiv_id,
+    load_paper_state,
+    mark_sent,
+    merge_discovered_papers,
+    records_to_papers,
+    save_paper_state,
+    set_affiliations,
+    unsent_records,
+    utc_now_iso,
+)
+from .priority_authors import parse_priority_authors, sort_records_by_priority
 from .schedule import last_scheduled_run, load_workflow_cron_schedules
 from .tts import batch_synthesize_podcast
 from .ranking import rank_papers
@@ -40,6 +52,7 @@ DEFAULT_NEWSLETTER_TEMPLATE = Path("template") / "newsletter.j2"
 DEFAULT_WORKFLOW_PATH = Path(".github") / "workflows" / "arxiv-newsletter.yml"
 DEFAULT_INFLUENCE_PROMPT_PATH = Path("prompt") / "prompt_influence_filter.j2"
 DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
+DEFAULT_STATE_PATH = Path("state") / "discovered_papers.json"
 AFFILIATION_TOKEN_LIMIT = 200
 
 
@@ -60,6 +73,10 @@ def _load_tts_instructions() -> str:
         if content:
             return content
     return "Energetic, upbeat podcast host tone. Friendly and engaging, clear enunciation."
+
+
+def _state_path() -> Path:
+    return Path(os.getenv("PAPER_STATE_PATH", str(DEFAULT_STATE_PATH)))
 
 
 def _trim_attachments_by_size(attachments: list[Path], max_total_bytes: int) -> list[Path]:
@@ -121,6 +138,19 @@ def _count_sources(papers: list) -> dict[str, int]:
         elif pid.startswith("CL"):
             counts["cl"] += 1
         elif pid.startswith("OTH"):
+            counts["keywords"] += 1
+    return counts
+
+
+def _count_record_sources(records: list[dict]) -> dict[str, int]:
+    counts = {"ir": 0, "cl": 0, "keywords": 0, "total": len(records)}
+    for record in records:
+        source = record.get("source")
+        if source == "ir":
+            counts["ir"] += 1
+        elif source == "cl":
+            counts["cl"] += 1
+        elif source == "keywords":
             counts["keywords"] += 1
     return counts
 
@@ -215,29 +245,10 @@ def main() -> None:
     fallback_note: str | None = None
     last_scheduled_datetime_str: str | None = None
     if filter_since_last_schedule:
-        cron_entries = load_workflow_cron_schedules(DEFAULT_WORKFLOW_PATH)
-        if not cron_entries:
-            print(
-                "filter_since_last_schedule is enabled but no cron schedules were found "
-                f"in {DEFAULT_WORKFLOW_PATH}. Falling back to unfiltered results."
-            )
-        else:
-            last_run = last_scheduled_run(
-                cron_entries, now=datetime.now(timezone.utc), lookback_days=30
-            )
-            if last_run:
-                last_scheduled_time = last_run
-                last_scheduled_datetime_str = format_toronto_time(last_run)
-                print(
-                    "Schedule-based filtering enabled; will later keep papers updated after "
-                    f"{last_scheduled_datetime_str} (last scheduled cron time, "
-                    "not guaranteed to be the last successful run)."
-                )
-            else:
-                print(
-                    "filter_since_last_schedule is enabled but the last scheduled run "
-                    "was not found in the recent window. Falling back to unfiltered results."
-                )
+        print(
+            "filter_since_last_schedule is ignored in bucket mode; "
+            "paper-state deduplication controls repeat notifications."
+        )
 
     capped_ir_limit = min(ir_limit, MAX_LIMIT)
     capped_nlp_limit = min(nlp_limit, MAX_LIMIT)
@@ -348,68 +359,82 @@ def main() -> None:
         openai_timeout=openai_timeout,
         provider=influence_provider,
     )
-    author_influence_by_id = influence_result.scores_by_id
     papers = influence_result.kept_papers
     influence_gate_note = (
         f"Author influence gate kept {len(papers)}/{fetched_count} papers "
         f"(threshold >= {influence_score_threshold})."
     )
-    fetch_counts = _count_sources(papers)
 
-    # Stage 2: apply date filtering (schedule-based) to already-filtered set
-    if filter_since_last_schedule and last_scheduled_time:
-        updated_after = last_scheduled_time
-        recent_papers = []
-        for paper in papers:
-            dt = _paper_datetime(paper)
-            if dt and dt > updated_after:
-                recent_papers.append(paper)
-        if len(recent_papers) < top_n:
-            filtered_count = len(recent_papers)
-            fallback_reason = (
-                "no new papers found"
-                if not recent_papers
-                else f"only {len(recent_papers)} new paper(s) found"
+    state_path = _state_path()
+    paper_state = load_paper_state(state_path)
+    seen_at = utc_now_iso()
+    changed_unsent_base_ids = merge_discovered_papers(paper_state, papers, seen_at)
+    save_paper_state(state_path, paper_state)
+
+    run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
+
+    if changed_unsent_base_ids:
+        papers_by_base_id = {base_arxiv_id(paper.arxiv_id): paper for paper in papers}
+        affiliation_papers = [
+            papers_by_base_id[base_id]
+            for base_id in changed_unsent_base_ids
+            if base_id in papers_by_base_id
+        ]
+        if affiliation_papers:
+            print(f"Extracting affiliations for {len(affiliation_papers)} bucket paper(s)...")
+            affiliation_pdf_paths = download_papers(
+                papers_dir,
+                affiliation_papers,
+                [paper.paper_id for paper in affiliation_papers],
             )
-            print(
-                f"{fallback_reason.capitalize()} after schedule filtering; "
-                "falling back to the most recent dates from the influence-filtered set."
+            affiliations_by_paper_id = extract_affiliations_batch(
+                client=affiliation_client,
+                model=affiliation_model,
+                papers=affiliation_papers,
+                pdf_paths=affiliation_pdf_paths,
+                pricing=affiliation_pricing,
+                cost_tracker=cost_tracker,
+                token_limit=AFFILIATION_TOKEN_LIMIT,
+                openai_timeout=openai_timeout,
+                max_workers=min(4, len(affiliation_papers)),
+                provider=affiliation_provider,
             )
-            papers, (latest_date_iso, earliest_date_iso) = _select_by_date_cascade(
-                papers, top_n
+            set_affiliations(
+                paper_state,
+                {
+                    base_arxiv_id(paper.arxiv_id): affiliations_by_paper_id.get(
+                        paper.paper_id, "Not specified"
+                    )
+                    for paper in affiliation_papers
+                },
             )
-            fetch_counts = _count_sources(papers)
-            date_span = ""
-            if latest_date_iso and earliest_date_iso:
-                date_span = f"{latest_date_iso} to {earliest_date_iso}"
-            elif latest_date_iso:
-                date_span = latest_date_iso
-            schedule_label = last_scheduled_datetime_str or (
-                format_toronto_time(last_scheduled_time) if last_scheduled_time else "N/A"
-            )
-            fallback_note = (
-                f"Schedule filter ({schedule_label}) found {filtered_count} papers; "
-                f"fell back to recent dates ({date_span or 'unfiltered'}) after influence gate."
-            )
+    save_paper_state(state_path, paper_state)
+    print(f"Saved paper bucket state to {state_path}")
+
+    priority_authors = parse_priority_authors(os.getenv("PRIORITY_AUTHORS"))
+    candidate_records = sort_records_by_priority(unsent_records(paper_state), priority_authors)
+    fetch_counts = _count_record_sources(candidate_records)
+    if not candidate_records:
+        print("No unsent papers in bucket; skipping ranking and email.")
+        print(f"Saved results to {run_dir}")
+        total_cents = cost_tracker.total_cents()
+        if cost_tracker.has_unknown:
+            print(f"Total estimated cost: {total_cents:.2f}¢ (partial).")
         else:
-            papers = recent_papers
-            fetch_counts = _count_sources(papers)
+            print(f"Total estimated cost: {total_cents:.2f}¢.")
+        return
 
-    if len(papers) < top_n:
-        raise SystemExit(
-            f"Not enough papers ({len(papers)}) after author influence/date filters for requested top-n {top_n}"
-        )
-    if fallback_note:
-        print(f"Fallback note: {fallback_note}")
+    papers, paper_id_to_base_id = records_to_papers(candidate_records)
+    top_n_for_bucket = min(top_n, len(papers))
 
-    print("Ranking papers with LLM...")
+    print(f"Ranking {len(papers)} unsent bucket paper(s) with LLM...")
     rankings = rank_papers(
         client=ranking_client,
         model=ranking_model,
         prompt_template=prompt_template,
         papers=papers,
-        top_n=top_n,
-        author_influence_by_id=author_influence_by_id,
+        top_n=top_n_for_bucket,
+        author_influence_by_id={},
         abstract_word_cutoff=abst_word_cutoff,
         pricing=ranking_pricing,
         cost_tracker=cost_tracker,
@@ -419,32 +444,34 @@ def main() -> None:
     )
     print("Ranking complete.")
 
-    run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
     papers_by_id = {paper.paper_id: paper for paper in papers}
+    winner_ids = rankings.final_ranking[:1]
+    winner_id = winner_ids[0]
+    winner_base_id = paper_id_to_base_id[winner_id]
 
     write_csv(
         run_dir,
         papers_by_id,
         rankings,
         tldr_by_id=rankings.tldr_by_id,
-        author_influence_by_id=author_influence_by_id,
+        author_influence_by_id={},
     )
     write_results_json(
         run_dir,
         papers,
         rankings,
         tldr_by_id=rankings.tldr_by_id,
-        author_influence_by_id=author_influence_by_id,
+        author_influence_by_id={},
     )
-    print("Downloading top papers...")
-    pdf_paths = download_papers(papers_dir, papers, rankings.final_ranking)
+    print("Downloading winning paper...")
+    pdf_paths = download_papers(papers_dir, papers, winner_ids)
     print("Download complete.")
 
     podcast_paths: list[Path] = []
     transcript_records: list[tuple[str, str, Path]] = []
     if generate_transcript_flag:
         podcast_prompt = load_podcast_prompt(DEFAULT_PODCAST_PROMPT_PATH)
-        transcript_ids = rankings.final_ranking[:top_n_tts]
+        transcript_ids = winner_ids if top_n_tts > 0 else []
         if not transcript_ids:
             print("Transcript generation skipped (top_n_tts is 0).")
         else:
@@ -493,56 +520,44 @@ def main() -> None:
             for _, transcript, transcript_path in transcript_records[:tts_count]:
                 audio_path = podcast_dir / transcript_path.with_suffix(".mp3").name
                 tts_items.append((transcript, audio_path))
-            primary_config = {
-                "provider": tts_provider,
-                "model": tts_model,
-                "voice": tts_voice,
-                "pricing": tts_pricing,
-            }
-            
-            podcast_paths = batch_synthesize_podcast(
-                client=openai_client,
-                primary_config=primary_config,
-                items=tts_items,
-                timeout=openai_timeout,
-                cost_tracker=cost_tracker,
-                instructions=_load_tts_instructions(),
-                label="TTS",
-                max_workers=min(4, len(tts_items)),
-                compress_to_64kbps=compress_to_64kbps,
-            )
-            print("Transcripts and audio complete.")
+            if tts_items:
+                primary_config = {
+                    "provider": tts_provider,
+                    "model": tts_model,
+                    "voice": tts_voice,
+                    "pricing": tts_pricing,
+                }
+
+                podcast_paths = batch_synthesize_podcast(
+                    client=openai_client,
+                    primary_config=primary_config,
+                    items=tts_items,
+                    timeout=openai_timeout,
+                    cost_tracker=cost_tracker,
+                    instructions=_load_tts_instructions(),
+                    label="TTS",
+                    max_workers=min(4, len(tts_items)),
+                    compress_to_64kbps=compress_to_64kbps,
+                )
+                print("Transcripts and audio complete.")
+            else:
+                print("TTS skipped (no transcripts available).")
         else:
             print("Transcripts complete (TTS disabled).")
     else:
         print("Transcript generation disabled.")
 
     if email_enabled:
-        print("Extracting affiliations for email...")
-        aff_papers = [papers_by_id[paper_id] for paper_id in rankings.final_ranking]
-        affiliations_by_id = extract_affiliations_batch(
-            client=affiliation_client,
-            model=affiliation_model,
-            papers=aff_papers,
-            pdf_paths=pdf_paths,
-            pricing=affiliation_pricing,
-            cost_tracker=cost_tracker,
-            token_limit=AFFILIATION_TOKEN_LIMIT,
-            openai_timeout=openai_timeout,
-            max_workers=min(4, len(rankings.final_ranking)),
-            provider=affiliation_provider,
-        )
-
         if include_keyword_papers:
             stats_line = (
                 f"Stats: IR {fetch_counts.get('ir', 0)}, "
                 f"CL {fetch_counts.get('cl', 0)}, "
-                f"Keywords {fetch_counts.get('keywords', 0)} (final set)."
+                f"Keywords {fetch_counts.get('keywords', 0)} unsent in bucket."
             )
         else:
             stats_line = (
                 f"Stats: IR {fetch_counts.get('ir', 0)}, "
-                f"CL {fetch_counts.get('cl', 0)} (final set, keywords disabled)."
+                f"CL {fetch_counts.get('cl', 0)} unsent in bucket (keywords disabled)."
             )
 
         lines: list[str] = []
@@ -550,12 +565,13 @@ def main() -> None:
             lines.append(f"NOTE: {fallback_note}")
         if influence_gate_note:
             lines.append(influence_gate_note)
-        lines.extend([stats_line, "", "Top papers:"])
+        lines.extend([stats_line, "", "Top paper:"])
         items: list[dict[str, str]] = []
-        for rank, paper_id in enumerate(rankings.final_ranking, start=1):
+        for rank, paper_id in enumerate(winner_ids, start=1):
             paper = papers_by_id[paper_id]
             tldr = rankings.tldr_by_id.get(paper_id, "")
-            affiliations = affiliations_by_id.get(paper_id, "Not specified")
+            state_record = paper_state["papers"].get(paper_id_to_base_id[paper_id], {})
+            affiliations = state_record.get("affiliations") or "Not specified"
             authors = ", ".join(paper.authors)
             version = _extract_version(paper.arxiv_id)
             published_date = _date_only(paper.published)
@@ -596,12 +612,12 @@ def main() -> None:
             html_stats = (
                 f"<p><strong>Stats:</strong> IR {fetch_counts.get('ir', 0)}, "
                 f"CL {fetch_counts.get('cl', 0)}, "
-                f"Keywords {fetch_counts.get('keywords', 0)} (final set).</p>"
+                f"Keywords {fetch_counts.get('keywords', 0)} unsent in bucket.</p>"
             )
         else:
             html_stats = (
                 f"<p><strong>Stats:</strong> IR {fetch_counts.get('ir', 0)}, "
-                f"CL {fetch_counts.get('cl', 0)} (final set, keywords disabled).</p>"
+                f"CL {fetch_counts.get('cl', 0)} unsent in bucket (keywords disabled).</p>"
             )
         html_prefix = ""
         if fallback_note:
@@ -627,6 +643,9 @@ def main() -> None:
             attachments=attachments,
         )
         print("Sent update email.")
+        mark_sent(paper_state, winner_base_id, utc_now_iso(), run_dir.name)
+        save_paper_state(state_path, paper_state)
+        print(f"Marked {winner_base_id} as sent in paper bucket state.")
 
     print(f"Saved results to {run_dir}")
     total_cents = cost_tracker.total_cents()
