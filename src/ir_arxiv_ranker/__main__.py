@@ -169,6 +169,14 @@ def _count_record_sources(records: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _records_after_sending(records: list[dict], sent_base_ids: set[str]) -> list[dict]:
+    return [
+        record
+        for record in records
+        if record.get("base_arxiv_id") not in sent_base_ids
+    ]
+
+
 def _score_contribution(score: int, weight: float, polarity: str) -> float:
     contribution = float(score) * weight
     if polarity == "negative":
@@ -470,7 +478,6 @@ def main() -> None:
     print(f"Saved paper bucket state to {state_path}")
 
     candidate_records = pooled_records(paper_state)
-    fetch_counts = _count_record_sources(candidate_records)
     if not candidate_records:
         print("No pooled papers available; skipping ranking and email.")
         print(f"Saved results to {run_dir}")
@@ -562,6 +569,7 @@ def main() -> None:
     winner_ids = rankings.final_ranking[:1]
     winner_id = winner_ids[0]
     winner_base_id = paper_id_to_base_id[winner_id]
+    winner_base_ids = {paper_id_to_base_id[paper_id] for paper_id in winner_ids}
     selected_papers = [papers_by_id[paper_id] for paper_id in winner_ids]
 
     print("Downloading winning paper...")
@@ -687,7 +695,9 @@ def main() -> None:
 
     if email_enabled:
         total_cost_summary = _format_total_cost(cost_tracker)
-        pool_unsent_count = len(candidate_records)
+        post_send_candidate_records = _records_after_sending(candidate_records, winner_base_ids)
+        post_send_fetch_counts = _count_record_sources(post_send_candidate_records)
+        pool_unsent_count = len(post_send_candidate_records)
         author_pass_value = (
             f"{author_influence_passed_count}/{fetched_count}"
             if author_influence_passed_count is not None
@@ -709,15 +719,17 @@ def main() -> None:
                 f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count}; "
                 f"{author_pass_line}"
                 f"{len(obtained_today_base_ids)} new to pool; "
-                f"pool sources IR {fetch_counts.get('ir', 0)}, CL {fetch_counts.get('cl', 0)}, "
-                f"Keywords {fetch_counts.get('keywords', 0)}."
+                f"pool sources IR {post_send_fetch_counts.get('ir', 0)}, "
+                f"CL {post_send_fetch_counts.get('cl', 0)}, "
+                f"Keywords {post_send_fetch_counts.get('keywords', 0)}."
             )
         else:
             stats_line = (
                 f"Stats: {pool_unsent_count} unsent in pool; fetched {fetched_count}; "
                 f"{author_pass_line}"
                 f"{len(obtained_today_base_ids)} new to pool; "
-                f"pool sources IR {fetch_counts.get('ir', 0)}, CL {fetch_counts.get('cl', 0)} "
+                f"pool sources IR {post_send_fetch_counts.get('ir', 0)}, "
+                f"CL {post_send_fetch_counts.get('cl', 0)} "
                 "(keywords disabled)."
             )
 
