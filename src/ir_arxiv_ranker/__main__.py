@@ -103,6 +103,12 @@ def _trim_attachments_by_size(attachments: list[Path], max_total_bytes: int) -> 
     return kept
 
 
+def _format_total_cost(cost_tracker: CostTracker) -> str:
+    total_cents = cost_tracker.total_cents()
+    suffix = " (partial)" if cost_tracker.has_unknown else ""
+    return f"{total_cents:.2f}¢{suffix}"
+
+
 def _extract_version(arxiv_id: str) -> str:
     if "v" in arxiv_id:
         suffix = arxiv_id.rsplit("v", 1)[-1]
@@ -166,6 +172,18 @@ def _score_contribution(score: int, weight: float, polarity: str) -> float:
     if polarity == "negative":
         return -contribution
     return contribution
+
+
+def _contribution_tone(contribution: float) -> str:
+    if contribution >= 2.0:
+        return "strong-positive"
+    if contribution > 0:
+        return "positive"
+    if contribution <= -2.0:
+        return "strong-negative"
+    if contribution < 0:
+        return "negative"
+    return "neutral"
 
 
 def _select_by_date_cascade(papers: list, min_count: int) -> tuple[list, tuple[str | None, str | None]]:
@@ -458,11 +476,7 @@ def main() -> None:
     if not candidate_records:
         print("No pooled papers available; skipping ranking and email.")
         print(f"Saved results to {run_dir}")
-        total_cents = cost_tracker.total_cents()
-        if cost_tracker.has_unknown:
-            print(f"Total estimated cost: {total_cents:.2f}¢ (partial).")
-        else:
-            print(f"Total estimated cost: {total_cents:.2f}¢.")
+        print(f"Total estimated cost: {_format_total_cost(cost_tracker)}.")
         return
 
     papers, paper_id_to_base_id = records_to_papers(candidate_records)
@@ -654,6 +668,7 @@ def main() -> None:
         print("Transcript generation disabled.")
 
     if email_enabled:
+        total_cost_summary = _format_total_cost(cost_tracker)
         pool_unsent_count = len(candidate_records)
         mail_stats = [
             {"label": "Unsent pool", "value": str(pool_unsent_count)},
@@ -723,6 +738,7 @@ def main() -> None:
                         "range": "0-2",
                         "polarity": "minus" if aspect.polarity == "negative" else "plus",
                         "contribution": f"{contribution:+.1f}",
+                        "contribution_tone": _contribution_tone(contribution),
                     }
                 )
                 lines.append(
@@ -738,6 +754,7 @@ def main() -> None:
                         "range": "0-5",
                         "polarity": "plus",
                         "contribution": f"{float(author_score):+.1f}",
+                        "contribution_tone": _contribution_tone(float(author_score)),
                     }
                 )
                 lines.append(
@@ -760,6 +777,7 @@ def main() -> None:
                 }
             )
 
+        lines.extend(["", f"Total estimated cost: {total_cost_summary}."])
         body = "\n".join(lines).strip()
         template_text = DEFAULT_NEWSLETTER_TEMPLATE.read_text()
         env = Environment(autoescape=True, undefined=StrictUndefined)
@@ -768,6 +786,7 @@ def main() -> None:
             items=items,
             stats=mail_stats,
             notices=[line for line in [fallback_note, influence_gate_note] if line],
+            total_cost=total_cost_summary,
         )
         write_newsletter_html(newsletter_dir, html_body, "newsletter.html")
         attachments = podcast_paths if podcast_paths else None
@@ -792,11 +811,7 @@ def main() -> None:
         print(f"Marked {winner_base_id} as sent in paper bucket state.")
 
     print(f"Saved results to {run_dir}")
-    total_cents = cost_tracker.total_cents()
-    if cost_tracker.has_unknown:
-        print(f"Total estimated cost: {total_cents:.2f}¢ (partial).")
-    else:
-        print(f"Total estimated cost: {total_cents:.2f}¢.")
+    print(f"Total estimated cost: {_format_total_cost(cost_tracker)}.")
 
 
 if __name__ == "__main__":

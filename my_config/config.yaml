@@ -40,7 +40,7 @@ abst_word_cutoff: 200
 transcript_word_cutoff: 1000
 arxiv_timeout: 30
 openai_timeout: 180
-influence_score_threshold: 4
+influence_score_threshold: 3
 
 ranking_aspects_path: my_config/ranking_aspects.yaml
 ranking_max_workers: 150

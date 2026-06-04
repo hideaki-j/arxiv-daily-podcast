@@ -19,8 +19,11 @@ positive:
   conversational_domain:
     label: conversational domain
     weight: 1
-  automatic_eval_or_user_simulation_challenges:
-    label: analysis or discussion of the problem/challenges of the automatic evaluation / user simulation
+  automatic_evaluation_challenges:
+    label: analysis or discussion of the problem/challenges of automatic evaluation
+    weight: 1
+  user_simulation_challenges:
+    label: analysis or discussion of the problem/challenges of user simulation
     weight: 1
   prompt_optimization_or_prompting:
     label: covering prompt optimization or prompting techniques

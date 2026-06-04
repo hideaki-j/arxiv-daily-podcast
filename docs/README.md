@@ -37,7 +37,7 @@ Settings in `my_config/config.yaml`:
 | `tts_instructions_path` | `prompt/tts_instructions.txt` | Path to TTS style instructions |
 | `influence_filter_model` | `gpt-5-mini-2025-08-07` | Model for author-influence scoring |
 | `influence_prompt_path` | `prompt/prompt_influence_filter.j2` | Prompt template for author influence scoring |
-| `influence_score_threshold` | `4` | Minimum author-influence score (0–5) to report as influential; includes scores 4 and 5 |
+| `influence_score_threshold` | `3` | Minimum author-influence score (0–5) to report as influential; includes scores 3, 4, and 5 |
 | `ranking_aspects_path` | `my_config/ranking_aspects.yaml` | Separate YAML file with positive/negative ranking aspects and weights |
 | `ranking_max_workers` | `150` | Parallel worker count for per-paper ranking aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |

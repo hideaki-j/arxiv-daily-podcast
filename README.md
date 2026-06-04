@@ -35,7 +35,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml
 
 Edit `my_config/config.yaml` to control the run:
 
-- `influence_filter_model`, `influence_score_threshold`: model and minimum score (0–5) for author influence reporting; keep this at `4` to include scores `4` and `5`.
+- `influence_filter_model`, `influence_score_threshold`: model and minimum score (0–5) for author influence reporting; keep this at `3` to include scores `3`, `4`, and `5`.
 - `ranking_aspects_path`, `ranking_max_workers`: separate YAML file for ranking aspect weights and the parallel worker count for per-paper ranking scores.
 - `ranking_model`, `podcast_model`: main LLMs for ranking and transcripts.
 - `podcast_provider`: set to `openrouter` to use OpenRouter for podcast generation (requires `OPENROUTER_API_KEY` in .env), or leave unset for default (`openai`).

@@ -108,7 +108,7 @@ def load_config(config_path: Path) -> Settings:
     pricing_path = raw_config.get("pricing_path")
     arxiv_timeout = raw_config.get("arxiv_timeout")
     openai_timeout = raw_config.get("openai_timeout")
-    influence_score_threshold = raw_config.get("influence_score_threshold", 4)
+    influence_score_threshold = raw_config.get("influence_score_threshold", 3)
     influence_max_workers = raw_config.get("influence_max_workers")
     ranking_aspects_path = raw_config.get("ranking_aspects_path", "my_config/ranking_aspects.yaml")
     ranking_max_workers = raw_config.get("ranking_max_workers", 150)
