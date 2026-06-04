@@ -15,8 +15,8 @@ ranking:
   model: gpt-5-2025-08-07
 
 podcast:
-  provider: gemini
-  model: gemini-3.1-pro-preview
+  provider: openai
+  model: gpt-5.5
 
 tts:
   provider: gemini

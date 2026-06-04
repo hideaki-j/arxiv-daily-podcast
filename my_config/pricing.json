@@ -1,4 +1,10 @@
 {
+  "gpt-5.5": {
+    "provider": "openai",
+    "input_usd_per_1m_tokens": 5.0,
+    "cached_input_usd_per_1m_tokens": 0.5,
+    "output_usd_per_1m_tokens": 30.0
+  },
   "gpt-5-2025-08-07": {
     "provider": "openai",
     "input_usd_per_1m_tokens": 1.25,
