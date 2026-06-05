@@ -101,7 +101,14 @@ def _manga_style_prompt() -> str:
 
 
 def _manga_characters_list() -> str:
-    return os.getenv("CHARACTERS_LIST", "").strip()
+    teacher = os.getenv("CHARACTER_TEACHER", "").strip()
+    student = os.getenv("CHARACTER_STUDENT", "").strip()
+    lines = []
+    if teacher:
+        lines.append(f"Teacher: {teacher}")
+    if student:
+        lines.append(f"Student: {student}")
+    return "\n".join(lines)
 
 
 def _trim_attachments_by_size(attachments: list[Path], max_total_bytes: int) -> list[Path]:

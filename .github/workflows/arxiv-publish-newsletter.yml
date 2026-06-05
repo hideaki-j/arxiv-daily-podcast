@@ -71,7 +71,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MANGA_STYLE_PROMPT: ${{ secrets.MANGA_STYLE_PROMPT }}
-          CHARACTERS_LIST: ${{ secrets.CHARACTERS_LIST }}
+          CHARACTER_TEACHER: ${{ secrets.CHARACTER_TEACHER }}
+          CHARACTER_STUDENT: ${{ secrets.CHARACTER_STUDENT }}
         run: |
           python - <<'PY'
           import os
@@ -84,7 +85,8 @@ jobs:
               "OPENROUTER_API_KEY",
               "GEMINI_API_KEY",
               "MANGA_STYLE_PROMPT",
-              "CHARACTERS_LIST",
+              "CHARACTER_TEACHER",
+              "CHARACTER_STUDENT",
           ]
           lines = [f"{key}={os.environ[key]}" for key in keys if os.environ.get(key)]
           Path(".env").write_text("\n".join(lines) + "\n")
