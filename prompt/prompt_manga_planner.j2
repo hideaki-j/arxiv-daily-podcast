@@ -10,7 +10,14 @@ Read the paper text and write an full-color manga plan with 6 panels:
 
 {% if manga_style %}{{ manga_style }}{% endif %}
 
-Must descirbe all people appear in that manga. For each panel, describe the scene, characters or objects, composition, captions, labels, and any visual metaphor and also describe what will be in the speech bubble. Use concrete paper-specific details and give the artwork enough room for expressive storytelling. Keep the output directly usable as an image generation prompt. Do not mention that you are planning. Do not include Markdown tables.
+{% if manga_characters_list %}
+Private character list:
+{{ manga_characters_list }}
+
+Choose exactly 2 or 3 characters from the private character list and include only those selected characters as recurring people in the manga. The selected characters must fit the paper-specific plot and should not be introduced as unrelated cameos.
+{% endif %}
+
+Must describe all people who appear in that manga. For each panel, describe the scene, characters or objects, composition, captions, labels, and any visual metaphor and also describe what will be in the speech bubble. Use concrete paper-specific details and give the artwork enough room for expressive storytelling. Keep the output directly usable as an image generation prompt. Do not mention that you are planning. Do not include Markdown tables.
 
 Paper title: {{ paper.title }}
 Authors: {{ paper.authors | join(", ") }}

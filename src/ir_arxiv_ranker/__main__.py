@@ -100,6 +100,10 @@ def _manga_style_prompt() -> str:
     return os.getenv("MANGA_STYLE_PROMPT", "").strip()
 
 
+def _manga_characters_list() -> str:
+    return os.getenv("CHARACTERS_LIST", "").strip()
+
+
 def _trim_attachments_by_size(attachments: list[Path], max_total_bytes: int) -> list[Path]:
     kept: list[Path] = []
     total = 0
@@ -464,6 +468,7 @@ def main() -> None:
     podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
     manga_planner_client = gemini_client if manga_planner_provider == "gemini" else openai_client
     manga_style_prompt = _manga_style_prompt()
+    manga_characters_list = _manga_characters_list()
 
     state_path = _state_path()
     paper_state = load_paper_state(state_path)
@@ -753,6 +758,7 @@ def main() -> None:
                 timeout=openai_timeout,
                 provider=manga_planner_provider,
                 manga_style=manga_style_prompt,
+                manga_characters_list=manga_characters_list,
             )
             print("Generating manga image for winning paper...")
             manga_image_paths.append(
@@ -772,6 +778,7 @@ def main() -> None:
                     cost_tracker=cost_tracker,
                     timeout=openai_timeout,
                     manga_style=manga_style_prompt,
+                    manga_characters_list=manga_characters_list,
                 )
             )
             print("Manga image complete.")

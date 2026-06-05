@@ -223,3 +223,39 @@ def test_generate_manga_instruction_renders_manga_style(monkeypatch, tmp_path):
 
     assert captured["prompt"] == "private style paper text"
     assert instruction == "plan"
+
+
+def test_generate_manga_instruction_renders_private_character_list(monkeypatch, tmp_path):
+    paper = Paper(
+        paper_id="B001",
+        arxiv_id="2406.12345v1",
+        title="Test Paper",
+        authors=["Ada Lovelace"],
+        published="2026-06-01T00:00:00Z",
+        updated="2026-06-01T00:00:00Z",
+        summary="A test summary.",
+        pdf_url="https://arxiv.org/pdf/2406.12345v1.pdf",
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "ir_arxiv_ranker.manga_image._extract_pdf_text",
+        lambda _: "paper text",
+    )
+
+    def fake_call_llm_text(**kwargs):
+        captured["prompt"] = kwargs["prompt"]
+        return "plan"
+
+    monkeypatch.setattr("ir_arxiv_ranker.manga_image.call_llm_text", fake_call_llm_text)
+
+    instruction = generate_manga_instruction(
+        client=SimpleNamespace(),
+        model="gpt-5.5",
+        prompt_template="{{ manga_characters_list }} {{ paper_text }}",
+        paper=paper,
+        pdf_path=tmp_path / "paper.pdf",
+        manga_characters_list="Private Character A; Private Character B",
+    )
+
+    assert captured["prompt"] == "Private Character A; Private Character B paper text"
+    assert instruction == "plan"

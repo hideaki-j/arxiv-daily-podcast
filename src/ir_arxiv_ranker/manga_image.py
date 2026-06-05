@@ -30,6 +30,7 @@ def _render_prompt(
     paper_text: str = "",
     manga_instruction: str = "",
     manga_style: str = "",
+    manga_characters_list: str = "",
 ) -> str:
     env = Environment(autoescape=False, undefined=StrictUndefined)
     return env.from_string(prompt_template).render(
@@ -37,6 +38,7 @@ def _render_prompt(
         paper_text=paper_text,
         manga_instruction=manga_instruction,
         manga_style=manga_style,
+        manga_characters_list=manga_characters_list,
         model=model,
     )
 
@@ -110,6 +112,7 @@ def generate_manga_instruction(
     timeout: int | None = None,
     provider: str = "openai",
     manga_style: str = "",
+    manga_characters_list: str = "",
 ) -> str:
     paper_text = _truncate_chars(_extract_pdf_text(pdf_path), char_cutoff)
     prompt = _render_prompt(
@@ -118,6 +121,7 @@ def generate_manga_instruction(
         model=model,
         paper_text=paper_text,
         manga_style=manga_style,
+        manga_characters_list=manga_characters_list,
     )
     instruction = call_llm_text(
         client=client,
@@ -150,6 +154,7 @@ def generate_manga_image(
     cost_tracker: CostTracker | None = None,
     timeout: int | None = None,
     manga_style: str = "",
+    manga_characters_list: str = "",
 ) -> Path:
     prompt = _truncate_chars(
         _render_prompt(
@@ -158,6 +163,7 @@ def generate_manga_image(
             model=model,
             manga_instruction=manga_instruction,
             manga_style=manga_style,
+            manga_characters_list=manga_characters_list,
         ),
         char_cutoff,
     )
