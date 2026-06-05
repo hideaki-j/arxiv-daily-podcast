@@ -177,6 +177,7 @@ Required only when the matching provider is enabled:
 
 Optional:
 - `PRIORITY_AUTHORS` - semicolon-delimited canonical author names.
+- `MANGA_STYLE_PROMPT` - private style hint for image planning and generation.
 
 In GitHub Actions, the same values should be stored as repository Actions secrets. The fetch-score workflow only writes API/provider secrets needed for scoring/enrichment. The publish workflow also writes Gmail secrets because it can send email.
 

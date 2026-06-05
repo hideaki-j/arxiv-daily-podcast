@@ -111,6 +111,48 @@ def test_generate_manga_image_applies_final_prompt_char_cutoff(tmp_path):
     assert fake_images.kwargs["prompt"] == "abc"
 
 
+def test_generate_manga_image_renders_manga_style(tmp_path):
+    class FakeImages:
+        def __init__(self):
+            self.kwargs = None
+
+        def generate(self, **kwargs):
+            self.kwargs = kwargs
+            return SimpleNamespace(
+                data=[SimpleNamespace(b64_json=base64.b64encode(b"image").decode("ascii"))],
+                usage=None,
+            )
+
+    fake_images = FakeImages()
+    fake_client = SimpleNamespace(images=fake_images)
+    paper = Paper(
+        paper_id="B001",
+        arxiv_id="2406.12345v1",
+        title="Test Paper",
+        authors=["Ada Lovelace"],
+        published="2026-06-01T00:00:00Z",
+        updated="2026-06-01T00:00:00Z",
+        summary="A test summary.",
+        pdf_url="https://arxiv.org/pdf/2406.12345v1.pdf",
+    )
+
+    generate_manga_image(
+        client=fake_client,
+        model="gpt-image-2",
+        prompt_template="{{ manga_style }} {{ manga_instruction }}",
+        manga_instruction="six panel manga plan",
+        paper=paper,
+        image_dir=tmp_path / "manga",
+        rank=1,
+        size="1536x1024",
+        quality="high",
+        output_format="png",
+        manga_style="private style",
+    )
+
+    assert fake_images.kwargs["prompt"] == "private style six panel manga plan"
+
+
 def test_generate_manga_instruction_applies_image_only_char_cutoff(monkeypatch, tmp_path):
     paper = Paper(
         paper_id="B001",
@@ -144,4 +186,40 @@ def test_generate_manga_instruction_applies_image_only_char_cutoff(monkeypatch, 
     )
 
     assert captured["prompt"] == "abc"
+    assert instruction == "plan"
+
+
+def test_generate_manga_instruction_renders_manga_style(monkeypatch, tmp_path):
+    paper = Paper(
+        paper_id="B001",
+        arxiv_id="2406.12345v1",
+        title="Test Paper",
+        authors=["Ada Lovelace"],
+        published="2026-06-01T00:00:00Z",
+        updated="2026-06-01T00:00:00Z",
+        summary="A test summary.",
+        pdf_url="https://arxiv.org/pdf/2406.12345v1.pdf",
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "ir_arxiv_ranker.manga_image._extract_pdf_text",
+        lambda _: "paper text",
+    )
+
+    def fake_call_llm_text(**kwargs):
+        captured["prompt"] = kwargs["prompt"]
+        return "plan"
+
+    monkeypatch.setattr("ir_arxiv_ranker.manga_image.call_llm_text", fake_call_llm_text)
+
+    instruction = generate_manga_instruction(
+        client=SimpleNamespace(),
+        model="gpt-5.5",
+        prompt_template="{{ manga_style }} {{ paper_text }}",
+        paper=paper,
+        pdf_path=tmp_path / "paper.pdf",
+        manga_style="private style",
+    )
+
+    assert captured["prompt"] == "private style paper text"
     assert instruction == "plan"

@@ -8,7 +8,7 @@ Read the paper text and write an full-color manga plan with 6 panels:
 5. Limitations
 6. Conclusion
 
-Use Meitantei Conan-kei energy with natural, readable scenes.
+{% if manga_style %}{{ manga_style }}{% endif %}
 
 Must descirbe all people appear in that manga. For each panel, describe the scene, characters or objects, composition, captions, labels, and any visual metaphor and also describe what will be in the speech bubble. Use concrete paper-specific details and give the artwork enough room for expressive storytelling. Keep the output directly usable as an image generation prompt. Do not mention that you are planning. Do not include Markdown tables.
 

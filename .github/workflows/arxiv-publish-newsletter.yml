@@ -70,6 +70,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MANGA_STYLE_PROMPT: ${{ secrets.MANGA_STYLE_PROMPT }}
         run: |
           python - <<'PY'
           import os
@@ -81,6 +82,7 @@ jobs:
               "GMAIL_APP_PASSWORD",
               "OPENROUTER_API_KEY",
               "GEMINI_API_KEY",
+              "MANGA_STYLE_PROMPT",
           ]
           lines = [f"{key}={os.environ[key]}" for key in keys if os.environ.get(key)]
           Path(".env").write_text("\n".join(lines) + "\n")

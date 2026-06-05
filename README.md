@@ -68,6 +68,7 @@ GMAIL_APP_PASSWORD=...
 OPENROUTER_API_KEY=...  # only when using OpenRouter
 GEMINI_API_KEY=...      # only when using Gemini
 PRIORITY_AUTHORS=...    # optional; semicolon-delimited
+MANGA_STYLE_PROMPT=...   # optional; private image style hint
 ```
 
 💡 Get a Gmail App Password by enabling 2-Step Verification and generating one in Google Account settings: [Google Account help page](https://support.google.com/accounts/answer/185833)
