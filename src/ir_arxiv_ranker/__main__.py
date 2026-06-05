@@ -874,7 +874,7 @@ def main() -> None:
             {"label": "Unsent pool", "value": str(pool_stats["unsent_pool_total"])},
             {"label": "Fetched 24h", "value": str(pool_stats["fetched_24h"])},
             {
-                "label": "Unique 24h",
+                "label": "Uniq/Fetched 24h",
                 "value": f"{pool_stats['unique_added_24h']}/{pool_stats['fetched_24h']}",
             },
             {"label": "Added 7d", "value": str(pool_stats["added_7d"])},

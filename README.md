@@ -107,7 +107,7 @@ The publish email shows four stored-pool statistics. These are computed only fro
 
 - `Unsent pool`: total unsent papers currently in `state/discovered_papers.json`.
 - `Fetched 24h`: unsent papers seen by a fetch-score run in the last 24 hours.
-- `Unique 24h`: papers from those last-24-hour fetches that were new unique additions to the pool.
+- `Uniq/Fetched 24h`: papers from those last-24-hour fetches that were new unique additions to the pool, shown as `unique/fetched`.
 - `Added 7d`: unsent papers first added to the pool in the last 7 days.
 
 ## FAQ

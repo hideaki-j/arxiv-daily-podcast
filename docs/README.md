@@ -46,7 +46,7 @@ published, summarized, converted to audio, or used for images.
 |-------|------------|
 | `Unsent pool` | Total unsent papers currently in `state/discovered_papers.json` |
 | `Fetched 24h` | Unsent papers whose `last_seen_at` is within the last 24 hours |
-| `Unique 24h` | Papers from the last-24-hour fetches whose `first_seen_at` is also within the last 24 hours, shown as `unique/fetched` |
+| `Uniq/Fetched 24h` | Papers from the last-24-hour fetches whose `first_seen_at` is also within the last 24 hours, shown as `unique/fetched` |
 | `Added 7d` | Unsent papers whose `first_seen_at` is within the last 7 days |
 
 ## Running
