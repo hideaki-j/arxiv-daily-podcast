@@ -569,11 +569,6 @@ def main() -> None:
                 )
         save_paper_state(state_path, paper_state)
         print(f"Saved paper bucket state to {state_path}")
-    elif run_publish:
-        influence_gate_note = (
-            "Generated from stored paper-state pool; arXiv fetch and scoring run separately."
-        )
-
     candidate_records = pooled_records(paper_state)
     if not candidate_records:
         print("No pooled papers available; skipping ranking and email.")
