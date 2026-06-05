@@ -31,7 +31,7 @@ def test_post_send_unsent_pool_stats_exclude_selected_paper():
     }
 
 
-def test_unsent_pool_statistics_use_seen_windows_and_author_threshold():
+def test_unsent_pool_statistics_use_seen_windows():
     now = datetime(2026, 6, 4, 14, 0, tzinfo=timezone.utc)
     records = [
         {
@@ -54,12 +54,11 @@ def test_unsent_pool_statistics_use_seen_windows_and_author_threshold():
         },
     ]
 
-    stats = _unsent_pool_statistics(records, influence_threshold=3, now=now)
+    stats = _unsent_pool_statistics(records, now=now)
 
     assert stats == {
         "unsent_pool_total": 3,
         "fetched_24h": 2,
         "unique_added_24h": 1,
         "added_7d": 2,
-        "author_pass": 2,
     }

@@ -36,8 +36,11 @@ Fetch-only runs may create a run directory only when affiliation PDF downloads a
 
 ## Email statistics
 
-The publish email includes five statistics computed from the current unsent
-stored pool before the selected paper is marked sent:
+The publish email includes four statistics computed from the current unsent
+stored pool before the selected paper is marked sent. The stored pool means
+records with `in_pool: true`; papers below the configured author-influence
+threshold are retained only for deduplication/history and are not ranked,
+published, summarized, converted to audio, or used for images.
 
 | Label | Definition |
 |-------|------------|
@@ -45,7 +48,6 @@ stored pool before the selected paper is marked sent:
 | `Fetched 24h` | Unsent papers whose `last_seen_at` is within the last 24 hours |
 | `Unique 24h` | Papers from the last-24-hour fetches whose `first_seen_at` is also within the last 24 hours, shown as `unique/fetched` |
 | `Added 7d` | Unsent papers whose `first_seen_at` is within the last 7 days |
-| `Author pass` | Unsent papers with `influence_score >= influence_score_threshold`, shown as `pass/unsent` |
 
 ## Running
 
@@ -99,7 +101,7 @@ Settings in `my_config/config.yaml`:
 | `tts.voice` | `Zephyr` | Voice ID for TTS |
 | `affiliation.provider` | `gemini` | Provider for affiliation extraction |
 | `affiliation.model` | `gemini-3-flash-preview` | Model for affiliation extraction |
-| `influence_score_threshold` | `3` | Minimum author-influence score (0–5) to report as influential; includes scores 3, 4, and 5 |
+| `influence_score_threshold` | `3` | Minimum author-influence score (0–5) for pool inclusion; includes scores 3, 4, and 5 |
 | `ranking_aspects_path` | `my_config/ranking_aspects.yaml` | Separate YAML file with positive/negative ranking aspects and weights |
 | `ranking_max_workers` | `150` | Parallel worker count for per-paper ranking aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |

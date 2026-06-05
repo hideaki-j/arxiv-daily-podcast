@@ -199,7 +199,6 @@ def _records_after_sending(records: list[dict], sent_base_ids: set[str]) -> list
 
 def _unsent_pool_statistics(
     records: list[dict],
-    influence_threshold: int,
     now: datetime | None = None,
 ) -> dict[str, int]:
     current_time = now or datetime.now(timezone.utc)
@@ -211,7 +210,6 @@ def _unsent_pool_statistics(
     fetched_24h = 0
     unique_added_24h = 0
     added_7d = 0
-    author_pass = 0
 
     for record in records:
         last_seen_at = _parse_iso_datetime(record.get("last_seen_at", ""))
@@ -226,16 +224,11 @@ def _unsent_pool_statistics(
         if first_seen_at and first_seen_at >= cutoff_7d:
             added_7d += 1
 
-        score = record.get("influence_score")
-        if isinstance(score, int) and score >= influence_threshold:
-            author_pass += 1
-
     return {
         "unsent_pool_total": len(records),
         "fetched_24h": fetched_24h,
         "unique_added_24h": unique_added_24h,
         "added_7d": added_7d,
-        "author_pass": author_pass,
     }
 
 
@@ -533,6 +526,7 @@ def main() -> None:
             papers,
             scores_by_id=influence_scores_by_id,
             seen_at=seen_at,
+            influence_threshold=influence_score_threshold,
         )
         save_paper_state(state_path, paper_state)
 
@@ -543,6 +537,7 @@ def main() -> None:
                 papers_by_base_id[base_id]
                 for base_id in changed_pooled_base_ids
                 if base_id in papers_by_base_id
+                and paper_state["pooled_papers"].get(base_id, {}).get("in_pool", True)
             ]
             if affiliation_papers:
                 print(f"Extracting affiliations for {len(affiliation_papers)} bucket paper(s)...")
@@ -879,7 +874,6 @@ def main() -> None:
         total_cost_summary = _format_total_cost(cost_tracker)
         pool_stats = _unsent_pool_statistics(
             candidate_records,
-            influence_threshold=influence_score_threshold,
         )
         mail_stats = [
             {"label": "Unsent pool", "value": str(pool_stats["unsent_pool_total"])},
@@ -889,20 +883,12 @@ def main() -> None:
                 "value": f"{pool_stats['unique_added_24h']}/{pool_stats['fetched_24h']}",
             },
             {"label": "Added 7d", "value": str(pool_stats["added_7d"])},
-            {
-                "label": "Author pass",
-                "value": (
-                    f"{pool_stats['author_pass']}/{pool_stats['unsent_pool_total']}"
-                ),
-            },
         ]
         stats_line = (
             f"Stats: {pool_stats['unsent_pool_total']} unsent in pool; "
             f"{pool_stats['fetched_24h']} fetched in the last 24h; "
             f"{pool_stats['unique_added_24h']} unique additions from those 24h fetches; "
-            f"{pool_stats['added_7d']} added in the last 7d; "
-            f"{pool_stats['author_pass']}/{pool_stats['unsent_pool_total']} "
-            f"current unsent papers pass author influence >= {influence_score_threshold}."
+            f"{pool_stats['added_7d']} added in the last 7d."
         )
 
         lines: list[str] = []

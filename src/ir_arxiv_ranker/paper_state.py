@@ -110,9 +110,14 @@ def _paper_record(
     seen_at: str,
     existing: dict | None = None,
     influence_score: int | None = None,
+    influence_threshold: int | None = None,
 ) -> dict:
     previous = existing or {}
     base_id = base_arxiv_id(paper.arxiv_id)
+    if influence_score is not None and influence_threshold is not None:
+        in_pool = influence_score >= influence_threshold
+    else:
+        in_pool = previous.get("in_pool", True)
     record = {
         "base_arxiv_id": base_id,
         "latest_arxiv_id": paper.arxiv_id,
@@ -127,6 +132,7 @@ def _paper_record(
         "first_seen_at": previous.get("first_seen_at", seen_at),
         "last_seen_at": seen_at,
         "status": POOLED_STATUS,
+        "in_pool": bool(in_pool),
         "sent": bool(previous.get("sent", previous.get("status") == SENT_STATUS)),
         "sent_at": previous.get("sent_at"),
         "sent_run_id": previous.get("sent_run_id"),
@@ -147,6 +153,7 @@ def merge_discovered_papers(
     papers: Iterable[Paper],
     scores_by_id: dict[str, int],
     seen_at: str,
+    influence_threshold: int | None = None,
 ) -> list[str]:
     changed_pooled_ids: list[str] = []
     changed_pooled_seen: set[str] = set()
@@ -161,6 +168,7 @@ def merge_discovered_papers(
             seen_at,
             existing,
             influence_score=score,
+            influence_threshold=influence_threshold,
         )
         pooled_papers[base_id] = record
 
@@ -238,6 +246,7 @@ def pooled_records(state: dict, include_sent: bool = False) -> list[dict]:
     records = [
         record
         for record in state.get("pooled_papers", {}).values()
+        if record.get("in_pool", True)
         if include_sent or not record.get("sent")
     ]
 

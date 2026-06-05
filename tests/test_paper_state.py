@@ -90,7 +90,25 @@ def test_merge_pools_all_papers_and_stores_affiliations():
     assert set(state["pooled_papers"]) == {"2406.12345", "2406.99999"}
     assert state["pooled_papers"]["2406.12345"]["influence_score"] == 5
     assert state["pooled_papers"]["2406.99999"]["influence_score"] == 4
+    assert state["pooled_papers"]["2406.12345"]["in_pool"] is True
+    assert state["pooled_papers"]["2406.99999"]["in_pool"] is True
     assert state["pooled_papers"]["2406.12345"]["affiliations"] == "University of Waterloo"
+
+
+def test_merge_marks_below_threshold_papers_out_of_pool():
+    state = {"schema_version": 1, "pooled_papers": {}}
+
+    merge_discovered_papers(
+        state,
+        [_paper("2406.12345v1"), _paper("2406.99999v1", paper_id="CL001")],
+        scores_by_id={"IR001": 3, "CL001": 2},
+        seen_at="2026-06-03T12:00:00Z",
+        influence_threshold=3,
+    )
+
+    assert state["pooled_papers"]["2406.12345"]["in_pool"] is True
+    assert state["pooled_papers"]["2406.99999"]["in_pool"] is False
+    assert [record["base_arxiv_id"] for record in pooled_records(state)] == ["2406.12345"]
 
 
 def test_sent_paper_stays_in_pool_and_is_excluded_from_unsent_records():

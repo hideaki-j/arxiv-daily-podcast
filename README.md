@@ -31,8 +31,8 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 
 ## CLI stages
 
-- `--stage fetch-score`: fetches arXiv papers, merges them into `state/discovered_papers.json`, extracts affiliations for new/changed records, scores papers, and saves the scored pool.
-- `--stage publish`: reads `state/discovered_papers.json`, selects the highest-ranked unsent paper, generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
+- `--stage fetch-score`: fetches arXiv papers, merges them into `state/discovered_papers.json`, scores author influence, marks only papers with `in_pool: true` for the active author-influence threshold, extracts affiliations for those pool records, scores them, and saves the scored pool.
+- `--stage publish`: reads `state/discovered_papers.json`, selects the highest-ranked unsent `in_pool: true` paper, generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
 - `--stage all`: runs both stages in one process. This is the default for local manual runs.
 
 ## Setup Daily Newsletter & Podcast with GitHub Actions
@@ -48,7 +48,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 
 Edit `my_config/config.yaml` to control the run:
 
-- `influence_filter`, `influence_score_threshold`: provider/model and minimum score (0-5) for author influence reporting; keep the threshold at `3` to include scores `3`, `4`, and `5`.
+- `influence_filter`, `influence_score_threshold`: provider/model and minimum score (0-5) for pool inclusion; keep the threshold at `3` to include scores `3`, `4`, and `5`. Papers below the threshold remain in state for deduplication but have `in_pool: false` and are not ranked, published, summarized, converted to audio, or used for images.
 - `ranking_aspects_path`, `ranking_max_workers`: separate YAML file for ranking aspect weights and the parallel worker count for per-paper ranking scores.
 - `ranking`, `podcast`, `manga_planner`, `affiliation`: provider/model pairs for each LLM call family.
 - `manga_image`: OpenAI image generation settings for the selected-paper image attachment.
@@ -82,7 +82,7 @@ More details (full config list, pricing, outputs, structure) are in
 flowchart TD
   A["config.yaml<br>+ keywords.yaml<br>+ .env<br/>(__main__.py)"] --> B["Fetch arXiv papers<br/>cs.IR + cs.CL + keywords<br/>(arxiv_client.py)"]
   B --> C["LLM author influence scoring<br/>(influence_filter.py)"]
-  C --> D["Persistent paper pool<br/>with sent flag<br/>(paper_state.py)"]
+  C --> D["Persistent paper state<br/>with in_pool + sent flags<br/>(paper_state.py)"]
   D --> A1["Affiliation extraction<br/>(affiliations.py)"]
   A1 --> E["LLM per-paper aspect scoring<br/>+ aggregate ranking<br/>(ranking.py)"]
   E --> S1["Stored scored paper pool<br/>(paper_state.py)"]
@@ -103,13 +103,12 @@ Optional steps: transcripts, TTS, image generation, and email are controlled by 
 
 ## Email statistics
 
-The publish email shows five stored-pool statistics:
+The publish email shows four stored-pool statistics. These are computed only from unsent records with `in_pool: true`:
 
 - `Unsent pool`: total unsent papers currently in `state/discovered_papers.json`.
 - `Fetched 24h`: unsent papers seen by a fetch-score run in the last 24 hours.
 - `Unique 24h`: papers from those last-24-hour fetches that were new unique additions to the pool.
 - `Added 7d`: unsent papers first added to the pool in the last 7 days.
-- `Author pass`: unsent papers with `influence_score >= influence_score_threshold`.
 
 ## FAQ
 
