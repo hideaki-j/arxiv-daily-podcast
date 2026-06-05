@@ -26,7 +26,7 @@ manga_planner:
 manga_image:
   provider: openai
   model: gpt-image-2
-  size: 1536x1024
+  size: 1024x1536
   quality: high
   output_format: png
   char_cutoff: 30000

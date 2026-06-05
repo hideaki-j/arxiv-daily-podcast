@@ -95,7 +95,7 @@ def _parse_image_config(raw: dict | None) -> ImageConfig:
         raise SystemExit("Config must include 'manga_image' section")
     provider = raw.get("provider")
     model = raw.get("model")
-    size = raw.get("size", "1536x1024")
+    size = raw.get("size", "1024x1536")
     quality = raw.get("quality", "high")
     output_format = raw.get("output_format", "png")
     char_cutoff = raw.get("char_cutoff", raw.get("word_cutoff", 30000))

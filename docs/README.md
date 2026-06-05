@@ -90,7 +90,7 @@ Settings in `my_config/config.yaml`:
 | `manga_planner.model` | `gpt-5.5` | Model for selected-paper image planning |
 | `manga_image.provider` | `openai` | Provider for image generation; must be `openai` |
 | `manga_image.model` | `gpt-image-2` | Model for image generation |
-| `manga_image.size` | `1536x1024` | Generated image size |
+| `manga_image.size` | `1024x1536` | Generated portrait smartphone-oriented image size |
 | `manga_image.quality` | `high` | Generated image quality |
 | `manga_image.output_format` | `png` | Generated image format |
 | `manga_image.char_cutoff` | `30000` | Max selected-paper text characters for image planning |
