@@ -23,7 +23,7 @@ Responsibilities:
 GitHub Actions workflow:
 
 - `.github/workflows/arxiv-fetch-score.yml`
-- Uses the previous weekday hourly check window: `0 13-23 * * 1-5`.
+- Uses the lower-traffic weekday hourly check window: `0 6-16 * * 1-5`.
 - Skips after one successful scheduled run in the UTC cycle.
 - Caps scheduled attempts at six.
 

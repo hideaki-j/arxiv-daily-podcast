@@ -2,9 +2,9 @@ name: ArXiv Fetch and Score
 
 on:
   schedule:
-    # Same check window as the old scheduler: hourly on weekdays from
-    # 13:00-23:00 UTC.
-    - cron: "0 13-23 * * 1-5"
+    # Community discussion suggests arXiv API traffic is lighter from
+    # 06:00-16:00 UTC, away from the busiest post-announcement period.
+    - cron: "0 6-16 * * 1-5"
   workflow_dispatch:
 
 concurrency:
@@ -68,7 +68,7 @@ jobs:
               raise
 
           now = datetime.now(timezone.utc)
-          cycle_start = datetime.combine(now.date(), time(13, 0), tzinfo=timezone.utc)
+          cycle_start = datetime.combine(now.date(), time(6, 0), tzinfo=timezone.utc)
           previous_attempts = []
           for run in payload.get("workflow_runs", []):
               if int(run.get("id", 0)) == current_run_id:

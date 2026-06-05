@@ -40,7 +40,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 1. Push this repo to GitHub (or fork it).
 2. Go to Settings -> Secrets and variables -> Actions, then add the secrets used by your config, including `OPENAI_API_KEY`, `GMAIL_ADDRESS`, and `GMAIL_APP_PASSWORD` when email is enabled.
 3. Create or keep the `paper-state` branch. Both workflows read/write `state/discovered_papers.json` from that branch.
-4. Edit `.github/workflows/arxiv-fetch-score.yml` if you want to change the paper discovery/scoring interval. It keeps the old weekday hourly check window and stops after one successful scheduled run per cycle.
+4. Edit `.github/workflows/arxiv-fetch-score.yml` if you want to change the paper discovery/scoring interval. It runs hourly on weekdays during the lower-traffic 06:00-16:00 UTC window and stops after one successful scheduled run per cycle.
 5. Edit `.github/workflows/arxiv-publish-newsletter.yml` if you want to change the publish time. It runs at 10:00 America/Toronto every day, including weekends and holidays, with no retry dispatcher.
 6. Open Actions -> ArXiv Fetch and Score or ArXiv Publish Newsletter -> Run workflow, or wait for the schedules; check logs if a run fails.
 

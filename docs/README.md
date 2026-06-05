@@ -64,7 +64,7 @@ The automation is intentionally split into two workflow files:
 
 | Workflow | File | Purpose | Schedule |
 |----------|------|---------|----------|
-| ArXiv Fetch and Score | `.github/workflows/arxiv-fetch-score.yml` | Fetch from arXiv, enrich, score, and commit `state/discovered_papers.json` to the `paper-state` branch | Same weekday hourly retry/check window as before: `0 13-23 * * 1-5`; skips after one scheduled success per UTC cycle and caps scheduled attempts at six |
+| ArXiv Fetch and Score | `.github/workflows/arxiv-fetch-score.yml` | Fetch from arXiv, enrich, score, and commit `state/discovered_papers.json` to the `paper-state` branch | Weekday hourly retry/check window during lower-traffic arXiv API hours: `0 6-16 * * 1-5`; skips after one scheduled success per UTC cycle and caps scheduled attempts at six |
 | ArXiv Publish Newsletter | `.github/workflows/arxiv-publish-newsletter.yml` | Read stored state, generate newsletter/transcript/audio/image, send email, and mark the selected paper sent | 10:00 `America/Toronto` every day, including weekends and holidays; no retry dispatcher |
 
 Both workflows use the same `paper-state` concurrency group so state commits do not overlap. The app code is checked out from `master`; the persistent paper state is checked out from the `paper-state` branch.
