@@ -166,5 +166,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state/discovered_papers.json
-          git diff --cached --quiet || git commit -m "Update discovered paper state"
-          git push
+          git diff --cached --quiet && exit 0
+          git commit -m "Update discovered paper state"
+          for attempt in 1 2 3; do
+            git pull --rebase origin paper-state && git push origin HEAD:paper-state && exit 0
+            git rebase --abort || true
+            sleep $((attempt * 5))
+          done
+          exit 1
