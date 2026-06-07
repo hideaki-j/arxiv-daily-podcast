@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from google import genai
 from jinja2 import Environment, StrictUndefined
 from openai import OpenAI
 
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 from .affiliations import extract_affiliations_batch
 from .arxiv_client import fetch_keyword_papers, fetch_recent_papers
 from .config import load_config
@@ -133,6 +134,53 @@ def _format_total_cost(cost_tracker: CostTracker) -> str:
     total_cents = cost_tracker.total_cents()
     suffix = " (partial)" if cost_tracker.has_unknown else ""
     return f"{total_cents:.2f}¢{suffix}"
+
+
+def _cost_stage_label(label: str) -> str:
+    return re.sub(r"\s+\d+$", "", label).strip()
+
+
+def _format_cost_row(cost_cents: float, has_unknown: bool, has_known: bool) -> str:
+    if not has_known:
+        return "unknown"
+    suffix = " (partial)" if has_unknown else ""
+    return f"{cost_cents:.2f}¢{suffix}"
+
+
+def _cost_breakdown_rows(cost_report: CostReport) -> list[dict[str, str]]:
+    grouped: dict[tuple[str, str], dict[str, object]] = {}
+    for entry in cost_report.all_entries():
+        stage = _cost_stage_label(entry.label)
+        model = entry.model or "unknown model"
+        key = (stage, model)
+        row = grouped.setdefault(
+            key,
+            {
+                "stage": stage,
+                "model": model,
+                "cost_cents": 0.0,
+                "has_unknown": False,
+                "has_known": False,
+            },
+        )
+        if entry.cost_cents is None:
+            row["has_unknown"] = True
+        else:
+            row["cost_cents"] = float(row["cost_cents"]) + entry.cost_cents
+            row["has_known"] = True
+
+    return [
+        {
+            "stage": str(row["stage"]),
+            "model": str(row["model"]),
+            "cost": _format_cost_row(
+                float(row["cost_cents"]),
+                bool(row["has_unknown"]),
+                bool(row["has_known"]),
+            ),
+        }
+        for row in grouped.values()
+    ]
 
 
 def _extract_version(arxiv_id: str) -> str:
@@ -302,6 +350,7 @@ def main() -> None:
 
     settings = load_config(args.config)
     cost_tracker = CostTracker()
+    cost_report = CostReport()
 
     scoring_model = settings.scoring.model
     scoring_provider = settings.scoring.provider
@@ -504,6 +553,7 @@ def main() -> None:
                 max_workers=influence_max_workers,
                 pricing=influence_pricing,
                 cost_tracker=cost_tracker,
+                cost_report=cost_report,
                 openai_timeout=openai_timeout,
                 provider=influence_provider,
                 priority_authors=priority_authors,
@@ -559,6 +609,7 @@ def main() -> None:
                     pdf_paths=affiliation_pdf_paths,
                     pricing=affiliation_pricing,
                     cost_tracker=cost_tracker,
+                    cost_report=cost_report,
                     token_limit=AFFILIATION_TOKEN_LIMIT,
                     openai_timeout=openai_timeout,
                     max_workers=min(4, len(affiliation_papers)),
@@ -619,6 +670,7 @@ def main() -> None:
             abstract_word_cutoff=abst_word_cutoff,
             pricing=scoring_pricing,
             cost_tracker=cost_tracker,
+            cost_report=cost_report,
             openai_timeout=openai_timeout,
             provider=scoring_provider,
             include_keyword_papers=include_keyword_papers,
@@ -698,6 +750,7 @@ def main() -> None:
         paper_text_word_cutoff=transcript_word_cutoff,
         pricing=scoring_pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label="Selected summary LLM",
         openai_timeout=openai_timeout,
         max_workers=min(4, len(selected_papers)),
@@ -751,6 +804,7 @@ def main() -> None:
                 char_cutoff=manga_image_char_cutoff,
                 pricing=manga_planner_pricing,
                 cost_tracker=cost_tracker,
+                cost_report=cost_report,
                 timeout=openai_timeout,
                 provider=manga_planner_provider,
                 manga_style=manga_style_prompt,
@@ -772,6 +826,7 @@ def main() -> None:
                     char_cutoff=manga_image_char_cutoff,
                     pricing=manga_image_pricing,
                     cost_tracker=cost_tracker,
+                    cost_report=cost_report,
                     timeout=openai_timeout,
                     manga_style=manga_style_prompt,
                     manga_characters_list=manga_characters_list,
@@ -819,6 +874,7 @@ def main() -> None:
                 word_cutoff=transcript_word_cutoff,
                 pricing=podcast_pricing,
                 cost_tracker=cost_tracker,
+                cost_report=cost_report,
                 label="Transcript LLM",
                 openai_timeout=openai_timeout,
                 max_workers=min(4, len(transcript_papers)),
@@ -852,6 +908,7 @@ def main() -> None:
                         items=tts_items,
                         timeout=openai_timeout,
                         cost_tracker=cost_tracker,
+                        cost_report=cost_report,
                         instructions=_load_tts_instructions(),
                         label="TTS",
                         max_workers=min(4, len(tts_items)),
@@ -873,6 +930,7 @@ def main() -> None:
 
     if email_enabled:
         total_cost_summary = _format_total_cost(cost_tracker)
+        cost_breakdown_rows = _cost_breakdown_rows(cost_report)
         pool_stats = _unsent_pool_statistics(
             candidate_records,
         )
@@ -986,6 +1044,10 @@ def main() -> None:
             )
 
         lines.extend(["", f"Total estimated cost: {total_cost_summary}."])
+        if cost_breakdown_rows:
+            lines.append("Cost breakdown:")
+            for row in cost_breakdown_rows:
+                lines.append(f"- {row['stage']} ({row['model']}): {row['cost']}")
         body = "\n".join(lines).strip()
         template_text = DEFAULT_NEWSLETTER_TEMPLATE.read_text()
         env = Environment(autoescape=True, undefined=StrictUndefined)
@@ -995,6 +1057,7 @@ def main() -> None:
             stats=mail_stats,
             notices=[line for line in [fallback_note, influence_gate_note] if line],
             total_cost=total_cost_summary,
+            cost_breakdown_rows=cost_breakdown_rows,
         )
         write_newsletter_html(newsletter_dir, html_body, "newsletter.html")
         all_attachments = manga_image_paths + podcast_paths

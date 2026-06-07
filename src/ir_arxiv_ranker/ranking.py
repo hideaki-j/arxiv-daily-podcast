@@ -8,7 +8,7 @@ import yaml
 from jinja2 import Environment, StrictUndefined
 
 from utils.call_llm import batch_call_llm_json
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 
 from .models import Paper
 
@@ -176,6 +176,7 @@ def score_papers(
     abstract_word_cutoff: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     openai_timeout: int | None = None,
     provider: str = "openai",
     include_keyword_papers: bool = True,
@@ -220,6 +221,7 @@ def score_papers(
         timeout=openai_timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label="Scoring LLM",
         max_workers=max_workers,
         provider=provider,
@@ -250,4 +252,3 @@ def score_papers(
         total_score_by_id=total_score_by_id,
         tldr_by_id=tldr_by_id,
     )
-

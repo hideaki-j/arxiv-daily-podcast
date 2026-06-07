@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ir_arxiv_ranker.__main__ import (
+    _cost_breakdown_rows,
     _count_record_sources,
     _records_after_sending,
     _unsent_pool_statistics,
 )
+from utils.costs import CostReport
 
 
 def test_post_send_unsent_pool_stats_exclude_selected_paper():
@@ -62,3 +64,19 @@ def test_unsent_pool_statistics_use_seen_windows():
         "unique_added_24h": 1,
         "added_7d": 2,
     }
+
+
+def test_cost_breakdown_rows_group_by_stage_and_model():
+    report = CostReport()
+    report.add("Scoring LLM 1", 0.01, "input 10, output 20", model="gpt-test")
+    report.add("Scoring LLM 2", 0.02, "input 30, output 40", model="gpt-test")
+    report.add("Transcript LLM 1", None, "usage unavailable", model="gemini-test")
+
+    assert _cost_breakdown_rows(report) == [
+        {"stage": "Scoring LLM", "model": "gpt-test", "cost": "3.00¢"},
+        {
+            "stage": "Transcript LLM",
+            "model": "gemini-test",
+            "cost": "unknown",
+        },
+    ]

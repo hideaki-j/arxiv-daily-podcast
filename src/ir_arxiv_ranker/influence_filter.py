@@ -6,7 +6,7 @@ from typing import Dict, List
 from jinja2 import Environment, StrictUndefined
 
 from utils.call_llm import batch_call_llm_json
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 
 from .models import Paper
 
@@ -60,6 +60,7 @@ def filter_by_author_influence(
     max_workers: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     openai_timeout: int | None = None,
     provider: str = "openai",
     priority_authors: list[str] | None = None,
@@ -101,6 +102,7 @@ def filter_by_author_influence(
         timeout=openai_timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label="Author influence filter",
         max_workers=effective_max_workers,
         provider=provider,

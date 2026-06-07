@@ -5,7 +5,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from utils.call_llm import batch_call_llm_text, call_llm_text
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 
 from .models import Paper
 
@@ -32,6 +32,7 @@ def extract_affiliations(
     pdf_path: Path,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     token_limit: int = 200,
     openai_timeout: int | None = None,
 ) -> str:
@@ -52,6 +53,7 @@ def extract_affiliations(
         prompt=prompt,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label=f"Affiliations {paper.paper_id}",
         timeout=openai_timeout,
     ).strip()
@@ -64,6 +66,7 @@ def extract_affiliations_batch(
     pdf_paths: list[Path],
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     token_limit: int = 200,
     openai_timeout: int | None = None,
     max_workers: int = 4,
@@ -91,6 +94,7 @@ def extract_affiliations_batch(
         timeout=openai_timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label="Affiliations",
         max_workers=max_workers,
         provider=provider,

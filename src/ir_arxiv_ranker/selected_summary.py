@@ -6,7 +6,7 @@ from typing import Dict
 from jinja2 import Environment, StrictUndefined
 
 from utils.call_llm import batch_call_llm_json
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 
 from .models import Paper
 from .podcast import _extract_pdf_text, _truncate_words
@@ -62,6 +62,7 @@ def generate_selected_summaries_batch(
     paper_text_word_cutoff: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     label: str = "Selected summary LLM",
     openai_timeout: int | None = None,
     max_workers: int = 4,
@@ -95,6 +96,7 @@ def generate_selected_summaries_batch(
         timeout=openai_timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label=label,
         max_workers=max_workers,
         provider=provider,

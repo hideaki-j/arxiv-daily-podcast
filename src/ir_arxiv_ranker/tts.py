@@ -210,7 +210,7 @@ def synthesize_podcast(
         if cost_tracker is not None:
             cost_tracker.add(c)
         if cost_report is not None:
-            cost_report.add(label, c, _tts_detail(txt, det))
+            cost_report.add(label, c, _tts_detail(txt, det), model=model)
 
     # Try Primary
     provider = primary_config["provider"]
@@ -276,6 +276,7 @@ def batch_synthesize_podcast(
     if not items:
         return []
     report = cost_report or CostReport()
+    report_start = report.snapshot()
     results: list[Path | None] = [None] * len(items)
     workers = min(max_workers, len(items))
     
@@ -307,5 +308,5 @@ def batch_synthesize_podcast(
                 print(f"Failed to synthesize item {idx}: {e}")
 
     if show_cost_table:
-        print(report.render_psql(f"{label} costs"))
+        print(report.render_psql(f"{label} costs", entries=report.entries_since(report_start)))
     return [path for path in results if path is not None]

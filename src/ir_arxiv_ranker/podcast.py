@@ -6,7 +6,7 @@ from jinja2 import Environment, StrictUndefined
 from pypdf import PdfReader
 
 from utils.call_llm import batch_call_llm_text, call_llm_text
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 from utils.naming import build_file_stem
 
 from .models import Paper
@@ -53,6 +53,7 @@ def generate_transcript(
     word_cutoff: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     label: str = "Podcast LLM",
     openai_timeout: int | None = None,
     provider: str = "openai",
@@ -65,6 +66,7 @@ def generate_transcript(
         prompt=prompt,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label=label,
         timeout=openai_timeout,
         provider=provider,
@@ -80,6 +82,7 @@ def generate_transcripts_batch(
     word_cutoff: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     label: str = "Podcast LLM",
     openai_timeout: int | None = None,
     max_workers: int = 4,
@@ -98,6 +101,7 @@ def generate_transcripts_batch(
         timeout=openai_timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label=label,
         max_workers=max_workers,
         provider=provider,

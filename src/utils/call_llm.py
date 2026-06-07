@@ -180,7 +180,7 @@ def call_llm_json(
             if cost_tracker is not None:
                 cost_tracker.add(cost)
             if cost_report is not None:
-                cost_report.add(label, cost, _usage_detail(usage))
+                cost_report.add(label, cost, _usage_detail(usage), model=model)
             return payload
         except (APITimeoutError, APIConnectionError, httpx.ReadTimeout):
             attempt += 1
@@ -222,7 +222,7 @@ def _call_gemini_json(
             if cost_tracker is not None:
                 cost_tracker.add(cost)
             if cost_report is not None:
-                cost_report.add(label, cost, _usage_detail(usage))
+                cost_report.add(label, cost, _usage_detail(usage), model=model)
             return payload
         except (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectError):
             attempt += 1
@@ -303,7 +303,7 @@ def call_llm_text(
             if cost_tracker is not None:
                 cost_tracker.add(cost)
             if cost_report is not None:
-                cost_report.add(label, cost, _usage_detail(usage))
+                cost_report.add(label, cost, _usage_detail(usage), model=model)
             return text
         except (APITimeoutError, APIConnectionError, httpx.ReadTimeout):
             attempt += 1
@@ -339,7 +339,7 @@ def _call_gemini_text(
             if cost_tracker is not None:
                 cost_tracker.add(cost)
             if cost_report is not None:
-                cost_report.add(label, cost, _usage_detail(usage))
+                cost_report.add(label, cost, _usage_detail(usage), model=model)
             return text
         except (httpx.RemoteProtocolError, httpx.ReadTimeout, httpx.ConnectError):
             attempt += 1
@@ -372,6 +372,7 @@ def batch_call_llm_text(
     if not prompts:
         return []
     report = cost_report or CostReport()
+    report_start = report.snapshot()
     results: list[str | None] = [None] * len(prompts)
     workers = min(max_workers, len(prompts))
     with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -395,7 +396,7 @@ def batch_call_llm_text(
             idx = futures[future]
             results[idx] = future.result()
     if show_cost_table:
-        print(report.render_psql(f"{label} costs"))
+        print(report.render_psql(f"{label} costs", entries=report.entries_since(report_start)))
     return [result or "" for result in results]
 
 
@@ -407,6 +408,7 @@ def batch_call_llm_json(
     timeout: int | None = None,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     label: str = "LLM JSON",
     max_workers: int = 4,
     provider: str = "openai",
@@ -429,6 +431,7 @@ def batch_call_llm_json(
                 timeout=timeout,
                 pricing=pricing,
                 cost_tracker=cost_tracker,
+                cost_report=cost_report,
                 label=f"{label} {idx + 1}",
                 log_costs=False,
                 provider=provider,

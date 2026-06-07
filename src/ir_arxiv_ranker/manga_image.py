@@ -5,7 +5,7 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 
-from utils.costs import CostTracker
+from utils.costs import CostReport, CostTracker
 from utils.call_llm import call_llm_text
 from utils.naming import build_file_stem
 
@@ -109,6 +109,7 @@ def generate_manga_instruction(
     char_cutoff: int | None = 30000,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     timeout: int | None = None,
     provider: str = "openai",
     manga_style: str = "",
@@ -130,6 +131,7 @@ def generate_manga_instruction(
         timeout=timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
+        cost_report=cost_report,
         label="Manga planner LLM",
         provider=provider,
     ).strip()
@@ -152,6 +154,7 @@ def generate_manga_image(
     char_cutoff: int | None = 30000,
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
+    cost_report: CostReport | None = None,
     timeout: int | None = None,
     manga_style: str = "",
     manga_characters_list: str = "",
@@ -185,13 +188,16 @@ def generate_manga_image(
     image_path.write_bytes(base64.b64decode(result.data[0].b64_json))
 
     cost = _estimate_image_cost(getattr(result, "usage", None), pricing)
+    usage_detail = _usage_detail(getattr(result, "usage", None))
     if cost_tracker is not None:
         cost_tracker.add(cost)
+    if cost_report is not None:
+        cost_report.add("Manga image", cost, usage_detail, model=model)
     if cost is None:
-        print(f"Manga image cost: ? ({_usage_detail(getattr(result, 'usage', None))}).")
+        print(f"Manga image cost: ? ({usage_detail}).")
     else:
         print(
             f"Manga image cost: {cost * 100:.2f}¢ "
-            f"({_usage_detail(getattr(result, 'usage', None))})."
+            f"({usage_detail})."
         )
     return image_path
