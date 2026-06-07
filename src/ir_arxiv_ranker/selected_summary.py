@@ -63,7 +63,7 @@ def generate_selected_summaries_batch(
     pricing: dict | None = None,
     cost_tracker: CostTracker | None = None,
     cost_report: CostReport | None = None,
-    label: str = "Selected summary LLM",
+    label: str = "Summary generation",
     openai_timeout: int | None = None,
     max_workers: int = 4,
     provider: str = "openai",

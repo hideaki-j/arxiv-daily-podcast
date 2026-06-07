@@ -73,9 +73,9 @@ def test_cost_breakdown_rows_group_by_stage_and_model():
     report.add("Transcript LLM 1", None, "usage unavailable", model="gemini-test")
 
     assert _cost_breakdown_rows(report) == [
-        {"stage": "Scoring LLM", "model": "gpt-test", "cost": "3.00¢"},
+        {"stage": "Scoring", "model": "gpt-test", "cost": "3.00¢"},
         {
-            "stage": "Transcript LLM",
+            "stage": "Transcript",
             "model": "gemini-test",
             "cost": "unknown",
         },

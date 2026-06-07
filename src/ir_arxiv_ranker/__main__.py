@@ -56,6 +56,8 @@ DEFAULT_SELECTED_SUMMARY_PROMPT_PATH = Path("prompt") / "prompt_selected_summary
 DEFAULT_INFLUENCE_PROMPT_PATH = Path("prompt") / "prompt_influence_filter.j2"
 DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
 DEFAULT_STATE_PATH = Path("state") / "discovered_papers.json"
+SELECTED_SUMMARY_MODEL = "gemini-3.1-pro-preview"
+SELECTED_SUMMARY_PROVIDER = "gemini"
 AFFILIATION_TOKEN_LIMIT = 200
 
 
@@ -137,7 +139,8 @@ def _format_total_cost(cost_tracker: CostTracker) -> str:
 
 
 def _cost_stage_label(label: str) -> str:
-    return re.sub(r"\s+\d+$", "", label).strip()
+    stage = re.sub(r"\s+\d+$", "", label).strip()
+    return re.sub(r"\s+LLM\b", "", stage, flags=re.IGNORECASE).strip()
 
 
 def _format_cost_row(cost_cents: float, has_unknown: bool, has_known: bool) -> str:
@@ -394,6 +397,7 @@ def main() -> None:
     gmail_address = None
     gmail_password = None
     scoring_pricing = pricing_data.get(scoring_model, {}) or {}
+    selected_summary_pricing = pricing_data.get(SELECTED_SUMMARY_MODEL, {}) or {}
     podcast_pricing = pricing_data.get(podcast_model, {}) or {}
     manga_planner_pricing = pricing_data.get(manga_planner_model, {}) or {} if manga_planner_model else {}
     manga_image_pricing = pricing_data.get(manga_image_model, {}) or {} if manga_image_model else {}
@@ -501,6 +505,7 @@ def main() -> None:
         scoring_provider == "gemini"
         or (run_fetch_score and influence_provider == "gemini")
         or (run_fetch_score and affiliation_provider == "gemini")
+        or (run_publish and SELECTED_SUMMARY_PROVIDER == "gemini")
         or (run_publish and podcast_provider == "gemini")
         or (run_publish and manga_planner_provider == "gemini")
     )
@@ -513,6 +518,7 @@ def main() -> None:
     influence_client = gemini_client if influence_provider == "gemini" else openai_client
     scoring_client = gemini_client if scoring_provider == "gemini" else openai_client
     affiliation_client = gemini_client if affiliation_provider == "gemini" else openai_client
+    selected_summary_client = gemini_client if SELECTED_SUMMARY_PROVIDER == "gemini" else openai_client
     podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
     manga_planner_client = gemini_client if manga_planner_provider == "gemini" else openai_client
     manga_style_prompt = _manga_style_prompt()
@@ -742,19 +748,19 @@ def main() -> None:
     selected_summary_prompt = load_selected_summary_prompt(DEFAULT_SELECTED_SUMMARY_PROMPT_PATH)
     print(f"Generating selected-paper summary for {len(selected_papers)} paper(s)...")
     selected_summaries_by_id = generate_selected_summaries_batch(
-        client=scoring_client,
-        model=scoring_model,
+        client=selected_summary_client,
+        model=SELECTED_SUMMARY_MODEL,
         prompt_template=selected_summary_prompt,
         papers=selected_papers,
         pdf_paths=pdf_paths,
         paper_text_word_cutoff=transcript_word_cutoff,
-        pricing=scoring_pricing,
+        pricing=selected_summary_pricing,
         cost_tracker=cost_tracker,
         cost_report=cost_report,
-        label="Selected summary LLM",
+        label="Summary generation",
         openai_timeout=openai_timeout,
         max_workers=min(4, len(selected_papers)),
-        provider=scoring_provider,
+        provider=SELECTED_SUMMARY_PROVIDER,
     )
     selected_tldr_by_id = {
         paper_id: summary.get("tldr", "")
