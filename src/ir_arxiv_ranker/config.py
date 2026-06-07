@@ -32,7 +32,7 @@ class ImageConfig:
 
 @dataclass(frozen=True)
 class Settings:
-    ranking: LLMCallConfig
+    scoring: LLMCallConfig
     podcast: LLMCallConfig
     manga_planner: LLMCallConfig | None
     influence_filter: LLMCallConfig
@@ -59,8 +59,8 @@ class Settings:
     openai_timeout: int
     influence_score_threshold: int
     influence_max_workers: int | None
-    ranking_aspects_path: Path
-    ranking_max_workers: int
+    scoring_aspects_path: Path
+    scoring_max_workers: int
 
 
 def _parse_llm_call_config(raw: dict | None, name: str) -> LLMCallConfig:
@@ -134,7 +134,7 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("generate_manga_image must be a boolean")
 
     # Parse LLM call configs
-    ranking = _parse_llm_call_config(raw_config.get("ranking"), "ranking")
+    scoring = _parse_llm_call_config(raw_config.get("scoring"), "scoring")
     podcast = _parse_llm_call_config(raw_config.get("podcast"), "podcast")
     influence_filter = _parse_llm_call_config(raw_config.get("influence_filter"), "influence_filter")
     affiliation = _parse_llm_call_config(raw_config.get("affiliation"), "affiliation")
@@ -165,8 +165,8 @@ def load_config(config_path: Path) -> Settings:
     openai_timeout = raw_config.get("openai_timeout")
     influence_score_threshold = raw_config.get("influence_score_threshold", 3)
     influence_max_workers = raw_config.get("influence_max_workers")
-    ranking_aspects_path = raw_config.get("ranking_aspects_path", "my_config/ranking_aspects.yaml")
-    ranking_max_workers = raw_config.get("ranking_max_workers", 150)
+    scoring_aspects_path = raw_config.get("scoring_aspects_path", "my_config/scoring_aspects.yaml")
+    scoring_max_workers = raw_config.get("scoring_max_workers", 150)
 
     # Validate boolean settings
     if not isinstance(use_tts, bool):
@@ -211,10 +211,10 @@ def load_config(config_path: Path) -> Settings:
     if influence_max_workers is not None:
         if not isinstance(influence_max_workers, int) or influence_max_workers < 1:
             raise SystemExit("influence_max_workers must be an integer >= 1")
-    if not isinstance(ranking_max_workers, int) or ranking_max_workers < 1:
-        raise SystemExit("ranking_max_workers must be an integer >= 1")
-    if not isinstance(ranking_aspects_path, str) or not ranking_aspects_path:
-        raise SystemExit("ranking_aspects_path must be a non-empty string")
+    if not isinstance(scoring_max_workers, int) or scoring_max_workers < 1:
+        raise SystemExit("scoring_max_workers must be an integer >= 1")
+    if not isinstance(scoring_aspects_path, str) or not scoring_aspects_path:
+        raise SystemExit("scoring_aspects_path must be a non-empty string")
 
     # Validate required paths
     if not pricing_path:
@@ -267,7 +267,7 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("Keywords list is empty.")
 
     return Settings(
-        ranking=ranking,
+        scoring=scoring,
         podcast=podcast,
         manga_planner=manga_planner,
         influence_filter=influence_filter,
@@ -294,6 +294,6 @@ def load_config(config_path: Path) -> Settings:
         openai_timeout=openai_timeout,
         influence_score_threshold=influence_score_threshold,
         influence_max_workers=influence_max_workers,
-        ranking_aspects_path=Path(ranking_aspects_path),
-        ranking_max_workers=ranking_max_workers,
+        scoring_aspects_path=Path(scoring_aspects_path),
+        scoring_max_workers=scoring_max_workers,
     )

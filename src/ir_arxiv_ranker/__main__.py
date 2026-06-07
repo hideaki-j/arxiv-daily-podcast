@@ -30,17 +30,17 @@ from .paper_state import (
     load_paper_state,
     mark_sent,
     merge_discovered_papers,
-    needs_ranking_score,
+    needs_scoring_score,
     pooled_records,
     records_to_papers,
     save_paper_state,
-    set_ranking_scores,
+    set_scoring_scores,
     set_affiliations,
     utc_now_iso,
 )
 from .selected_summary import generate_selected_summaries_batch, load_selected_summary_prompt
 from .tts import batch_synthesize_podcast
-from .ranking import aggregate_score, load_ranking_aspects, rank_from_scores, rank_papers
+from .ranking import aggregate_score, load_scoring_aspects, rank_from_scores, score_papers
 
 
 MAX_LIMIT = 50
@@ -59,7 +59,7 @@ AFFILIATION_TOKEN_LIMIT = 200
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Rank recent arXiv cs.IR and cs.CL papers")
+    parser = argparse.ArgumentParser(description="Score and rank recent arXiv cs.IR and cs.CL papers")
     parser.add_argument(
         "--config",
         type=Path,
@@ -72,7 +72,7 @@ def _parse_args() -> argparse.Namespace:
         default="all",
         help=(
             "Pipeline stage to run: fetch-score discovers arXiv papers and stores "
-            "ranking scores; publish reads stored papers and generates the newsletter, "
+            "scoring results; publish reads stored papers and generates the newsletter, "
             "transcript/audio, and image."
         ),
     )
@@ -303,8 +303,8 @@ def main() -> None:
     settings = load_config(args.config)
     cost_tracker = CostTracker()
 
-    ranking_model = settings.ranking.model
-    ranking_provider = settings.ranking.provider
+    scoring_model = settings.scoring.model
+    scoring_provider = settings.scoring.provider
     podcast_model = settings.podcast.model
     podcast_provider = settings.podcast.provider
     generate_manga_image_flag = settings.generate_manga_image
@@ -338,13 +338,13 @@ def main() -> None:
     influence_prompt_path = DEFAULT_INFLUENCE_PROMPT_PATH
     influence_score_threshold = settings.influence_score_threshold
     influence_max_workers = settings.influence_max_workers
-    ranking_aspects_path = settings.ranking_aspects_path
-    ranking_max_workers = settings.ranking_max_workers
+    scoring_aspects_path = settings.scoring_aspects_path
+    scoring_max_workers = settings.scoring_max_workers
     arxiv_timeout = settings.arxiv_timeout
     openai_timeout = settings.openai_timeout
     gmail_address = None
     gmail_password = None
-    ranking_pricing = pricing_data.get(ranking_model, {}) or {}
+    scoring_pricing = pricing_data.get(scoring_model, {}) or {}
     podcast_pricing = pricing_data.get(podcast_model, {}) or {}
     manga_planner_pricing = pricing_data.get(manga_planner_model, {}) or {} if manga_planner_model else {}
     manga_image_pricing = pricing_data.get(manga_image_model, {}) or {} if manga_image_model else {}
@@ -440,17 +440,16 @@ def main() -> None:
 
     scoring_prompt_template = DEFAULT_SCORING_PROMPT_PATH.read_text()
     influence_prompt_template = influence_prompt_path.read_text()
-    ranking_aspects = load_ranking_aspects(ranking_aspects_path)
+    scoring_aspects = load_scoring_aspects(scoring_aspects_path)
 
     # Create clients based on provider
     openai_client = OpenAI()
     gemini_client = None
     influence_provider = settings.influence_filter.provider
-    ranking_provider = settings.ranking.provider
     affiliation_provider = settings.affiliation.provider
 
     needs_gemini = (
-        ranking_provider == "gemini"
+        scoring_provider == "gemini"
         or (run_fetch_score and influence_provider == "gemini")
         or (run_fetch_score and affiliation_provider == "gemini")
         or (run_publish and podcast_provider == "gemini")
@@ -463,7 +462,7 @@ def main() -> None:
         gemini_client = genai.Client(api_key=api_key)
 
     influence_client = gemini_client if influence_provider == "gemini" else openai_client
-    ranking_client = gemini_client if ranking_provider == "gemini" else openai_client
+    scoring_client = gemini_client if scoring_provider == "gemini" else openai_client
     affiliation_client = gemini_client if affiliation_provider == "gemini" else openai_client
     podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
     manga_planner_client = gemini_client if manga_planner_provider == "gemini" else openai_client
@@ -592,11 +591,11 @@ def main() -> None:
             author_influence_by_id[paper.paper_id] = score
     top_n_for_bucket = min(top_n, len(papers))
 
-    aspect_keys = [aspect.key for aspect in ranking_aspects]
+    aspect_keys = [aspect.key for aspect in scoring_aspects]
     scoring_items = [
         (paper, record)
         for paper, record in zip(papers, candidate_records)
-        if run_fetch_score and needs_ranking_score(record, aspect_keys)
+        if run_fetch_score and needs_scoring_score(record, aspect_keys)
     ]
     if scoring_items:
         scoring_papers = [paper for paper, _ in scoring_items]
@@ -610,23 +609,23 @@ def main() -> None:
             if paper.paper_id in author_influence_by_id
         }
         print(f"Scoring {len(scoring_papers)} new or changed pooled paper(s) with LLM...")
-        scoring_rankings = rank_papers(
-            client=ranking_client,
-            model=ranking_model,
+        scoring_rankings = score_papers(
+            client=scoring_client,
+            model=scoring_model,
             scoring_prompt_template=scoring_prompt_template,
             papers=scoring_papers,
             top_n=len(scoring_papers),
             author_influence_by_id=scoring_author_influence_by_id,
             abstract_word_cutoff=abst_word_cutoff,
-            pricing=ranking_pricing,
+            pricing=scoring_pricing,
             cost_tracker=cost_tracker,
             openai_timeout=openai_timeout,
-            provider=ranking_provider,
+            provider=scoring_provider,
             include_keyword_papers=include_keyword_papers,
-            aspects=ranking_aspects,
-            max_workers=ranking_max_workers,
+            aspects=scoring_aspects,
+            max_workers=scoring_max_workers,
         )
-        set_ranking_scores(
+        set_scoring_scores(
             paper_state,
             paper_id_to_base_id=scoring_paper_id_to_base_id,
             scores_by_id=scoring_rankings.scores_by_id,
@@ -634,25 +633,25 @@ def main() -> None:
         )
     else:
         if run_fetch_score:
-            print("No pooled papers need ranking scoring; reusing existing scores.")
+            print("No pooled papers need scoring; reusing existing scores.")
         else:
-            print("Reusing stored ranking scores.")
+            print("Reusing stored scoring results.")
 
     scores_by_id: dict[str, dict[str, int]] = {}
     total_score_by_id: dict[str, float] = {}
     for paper, record in zip(papers, candidate_records):
-        scores = dict(record.get("ranking_scores", {}))
+        scores = dict(record.get("scoring_scores", record.get("ranking_scores", {})))
         author_influence_score = author_influence_by_id.get(paper.paper_id)
         if author_influence_score is not None:
             scores["author_influence_score"] = author_influence_score
         scores_by_id[paper.paper_id] = scores
         total_score_by_id[paper.paper_id] = aggregate_score(
             scores,
-            ranking_aspects,
+            scoring_aspects,
             author_influence_score=author_influence_score,
         )
 
-    set_ranking_scores(
+    set_scoring_scores(
         paper_state,
         paper_id_to_base_id=paper_id_to_base_id,
         scores_by_id=scores_by_id,
@@ -691,18 +690,18 @@ def main() -> None:
     selected_summary_prompt = load_selected_summary_prompt(DEFAULT_SELECTED_SUMMARY_PROMPT_PATH)
     print(f"Generating selected-paper summary for {len(selected_papers)} paper(s)...")
     selected_summaries_by_id = generate_selected_summaries_batch(
-        client=ranking_client,
-        model=ranking_model,
+        client=scoring_client,
+        model=scoring_model,
         prompt_template=selected_summary_prompt,
         papers=selected_papers,
         pdf_paths=pdf_paths,
         paper_text_word_cutoff=transcript_word_cutoff,
-        pricing=ranking_pricing,
+        pricing=scoring_pricing,
         cost_tracker=cost_tracker,
         label="Selected summary LLM",
         openai_timeout=openai_timeout,
         max_workers=min(4, len(selected_papers)),
-        provider=ranking_provider,
+        provider=scoring_provider,
     )
     selected_tldr_by_id = {
         paper_id: summary.get("tldr", "")
@@ -928,11 +927,11 @@ def main() -> None:
             for section_label, section_text in summary_sections:
                 if section_text:
                     lines.append(f"{section_label}: {section_text}")
-            lines.append(f"Ranking score: {rankings.total_score_by_id.get(paper_id, 0):.1f}")
-            ranking_scores = rankings.scores_by_id.get(paper_id, {})
+            lines.append(f"Final score: {rankings.total_score_by_id.get(paper_id, 0):.1f}")
+            scoring_scores = rankings.scores_by_id.get(paper_id, {})
             score_rows = []
-            for aspect in ranking_aspects:
-                score = ranking_scores.get(aspect.key)
+            for aspect in scoring_aspects:
+                score = scoring_scores.get(aspect.key)
                 if not isinstance(score, int):
                     continue
                 contribution = _score_contribution(score, aspect.weight, aspect.polarity)
@@ -950,7 +949,7 @@ def main() -> None:
                     f"- {aspect.label}: {score} (0-2) "
                     f"({aspect.polarity}, {contribution:+.1f})"
                 )
-            author_score = ranking_scores.get("author_influence_score")
+            author_score = scoring_scores.get("author_influence_score")
             if isinstance(author_score, int):
                 score_rows.append(
                     {

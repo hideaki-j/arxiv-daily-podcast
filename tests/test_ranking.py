@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ir_arxiv_ranker.models import Paper
-from ir_arxiv_ranker.ranking import RankingAspect, rank_from_scores, rank_papers
+from ir_arxiv_ranker.ranking import ScoringAspect, rank_from_scores, score_papers
 
 
 def _paper(paper_id: str, title: str) -> Paper:
@@ -17,7 +17,7 @@ def _paper(paper_id: str, title: str) -> Paper:
     )
 
 
-def test_rank_papers_scores_each_paper_and_orders_by_aggregate(monkeypatch):
+def test_score_papers_scores_each_paper_and_orders_by_aggregate(monkeypatch):
     captured = {}
 
     def fake_batch_call_llm_json(**kwargs):
@@ -35,12 +35,12 @@ def test_rank_papers_scores_each_paper_and_orders_by_aggregate(monkeypatch):
 
     monkeypatch.setattr("ir_arxiv_ranker.ranking.batch_call_llm_json", fake_batch_call_llm_json)
     aspects = [
-        RankingAspect("survey", "survey papers", 1.0, "negative"),
-        RankingAspect("legal_domain", "legal domain", 1.0, "positive"),
-        RankingAspect("prompting", "prompting techniques", 2.0, "positive"),
+        ScoringAspect("survey", "survey papers", 1.0, "negative"),
+        ScoringAspect("legal_domain", "legal domain", 1.0, "positive"),
+        ScoringAspect("prompting", "prompting techniques", 2.0, "positive"),
     ]
 
-    rankings = rank_papers(
+    rankings = score_papers(
         client=object(),
         model="test-model",
         scoring_prompt_template=(

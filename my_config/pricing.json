@@ -19,6 +19,12 @@
     "cached_input_usd_per_1m_tokens": 0.125,
     "output_usd_per_1m_tokens": 10.0
   },
+  "gpt-5.4-mini-2026-03-17": {
+    "provider": "openai",
+    "input_usd_per_1m_tokens": 0.75,
+    "cached_input_usd_per_1m_tokens": 0.075,
+    "output_usd_per_1m_tokens": 4.5
+  },
   "gpt-5-mini-2025-08-07": {
     "provider": "openai",
     "input_usd_per_1m_tokens": 0.25,

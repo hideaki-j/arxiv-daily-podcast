@@ -17,7 +17,7 @@ DEFAULT_RANKING_MAX_WORKERS = 150
 
 
 @dataclass(frozen=True)
-class RankingAspect:
+class ScoringAspect:
     key: str
     label: str
     weight: float
@@ -34,21 +34,21 @@ class Rankings:
     total_score_by_id: Dict[str, float]
 
 
-def load_ranking_aspects(path: Path) -> list[RankingAspect]:
+def load_scoring_aspects(path: Path) -> list[ScoringAspect]:
     if not path.exists():
-        raise SystemExit(f"Ranking aspects file not found: {path}")
+        raise SystemExit(f"Scoring aspects file not found: {path}")
     raw = yaml.safe_load(path.read_text()) or {}
     if not isinstance(raw, dict):
-        raise SystemExit("Ranking aspects file must contain a YAML object.")
+        raise SystemExit("Scoring aspects file must contain a YAML object.")
 
-    aspects: list[RankingAspect] = []
+    aspects: list[ScoringAspect] = []
     for polarity in ("negative", "positive"):
         group = raw.get(polarity, {}) or {}
         if not isinstance(group, dict):
-            raise SystemExit(f"ranking_aspects.{polarity} must be a mapping")
+            raise SystemExit(f"scoring_aspects.{polarity} must be a mapping")
         for key, config in group.items():
             if not isinstance(key, str) or not key:
-                raise SystemExit(f"ranking_aspects.{polarity} contains an invalid key")
+                raise SystemExit(f"scoring_aspects.{polarity} contains an invalid key")
             if isinstance(config, str):
                 label = config
                 weight = 1.0
@@ -56,20 +56,20 @@ def load_ranking_aspects(path: Path) -> list[RankingAspect]:
                 label = config.get("label")
                 weight = config.get("weight", 1)
             else:
-                raise SystemExit(f"ranking_aspects.{polarity}.{key} must be a mapping or string")
+                raise SystemExit(f"scoring_aspects.{polarity}.{key} must be a mapping or string")
             if not isinstance(label, str) or not label:
-                raise SystemExit(f"ranking_aspects.{polarity}.{key}.label must be a non-empty string")
+                raise SystemExit(f"scoring_aspects.{polarity}.{key}.label must be a non-empty string")
             if not isinstance(weight, (int, float)) or weight < 0:
-                raise SystemExit(f"ranking_aspects.{polarity}.{key}.weight must be >= 0")
+                raise SystemExit(f"scoring_aspects.{polarity}.{key}.weight must be >= 0")
             aspects.append(
-                RankingAspect(key=key, label=label, weight=float(weight), polarity=polarity)
+                ScoringAspect(key=key, label=label, weight=float(weight), polarity=polarity)
             )
     if not aspects:
-        raise SystemExit("Ranking aspects file must define at least one aspect")
+        raise SystemExit("Scoring aspects file must define at least one aspect")
     return aspects
 
 
-def _build_score_response_format(aspects: list[RankingAspect]) -> dict:
+def _build_score_response_format(aspects: list[ScoringAspect]) -> dict:
     score_properties = {
         aspect.key: {
             "type": "integer",
@@ -99,7 +99,7 @@ def _build_score_response_format(aspects: list[RankingAspect]) -> dict:
     }
 
 
-def _validate_score_payload(payload: dict, paper_id: str, aspects: list[RankingAspect]) -> dict[str, int]:
+def _validate_score_payload(payload: dict, paper_id: str, aspects: list[ScoringAspect]) -> dict[str, int]:
     if payload.get("id") != paper_id:
         raise ValueError(f"Score payload id must be {paper_id}, got {payload.get('id')}")
     raw_scores = payload.get("scores")
@@ -118,7 +118,7 @@ def _validate_score_payload(payload: dict, paper_id: str, aspects: list[RankingA
 
 def aggregate_score(
     scores: dict[str, int],
-    aspects: list[RankingAspect],
+    aspects: list[ScoringAspect],
     author_influence_score: int | None = None,
 ) -> float:
     total = 0.0
@@ -166,7 +166,7 @@ def rank_from_scores(
     )
 
 
-def rank_papers(
+def score_papers(
     client,
     model: str,
     scoring_prompt_template: str,
@@ -179,7 +179,7 @@ def rank_papers(
     openai_timeout: int | None = None,
     provider: str = "openai",
     include_keyword_papers: bool = True,
-    aspects: list[RankingAspect] | None = None,
+    aspects: list[ScoringAspect] | None = None,
     max_workers: int = DEFAULT_RANKING_MAX_WORKERS,
 ) -> Rankings:
     del include_keyword_papers
@@ -220,7 +220,7 @@ def rank_papers(
         timeout=openai_timeout,
         pricing=pricing,
         cost_tracker=cost_tracker,
-        label="Ranking score LLM",
+        label="Scoring LLM",
         max_workers=max_workers,
         provider=provider,
     )
@@ -250,3 +250,4 @@ def rank_papers(
         total_score_by_id=total_score_by_id,
         tldr_by_id=tldr_by_id,
     )
+

@@ -15,6 +15,10 @@ SENT_STATUS = "sent"
 POOLED_STATUS = "pooled"
 
 
+def _legacy_value(record: dict, key: str, legacy_key: str, default=None):
+    return record.get(key, record.get(legacy_key, default))
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -50,7 +54,7 @@ def _source_from_paper_id(paper_id: str) -> str:
     return "unknown"
 
 
-def _ranking_input_hash(paper: Paper) -> str:
+def _scoring_input_hash(paper: Paper) -> str:
     payload = {
         "latest_arxiv_id": paper.arxiv_id,
         "title": paper.title,
@@ -63,6 +67,23 @@ def _ranking_input_hash(paper: Paper) -> str:
     return sha256(encoded).hexdigest()
 
 
+def _normalize_scoring_fields(record: dict) -> dict:
+    normalized = dict(record)
+    migrations = (
+        ("scoring_scores", "ranking_scores", {}),
+        ("scoring_total_score", "ranking_total_score", None),
+        ("scoring_tldr", "ranking_tldr", ""),
+        ("scoring_input_hash", "ranking_input_hash", None),
+        ("scoring_scored_input_hash", "ranking_scored_input_hash", None),
+    )
+    for key, legacy_key, default in migrations:
+        if key not in normalized and legacy_key in normalized:
+            normalized[key] = normalized[legacy_key]
+        elif key not in normalized and default is not None:
+            normalized[key] = default
+    return normalized
+
+
 def _normalize_state(state: dict) -> dict:
     if "sent_papers" in state or "pooled_papers" in state:
         pooled = state.get("pooled_papers", {})
@@ -70,19 +91,23 @@ def _normalize_state(state: dict) -> dict:
         if not isinstance(pooled, dict) or not isinstance(sent, dict):
             raise ValueError("Paper state pooled_papers and sent_papers must be objects")
         merged = {
-            base_id: {
-                **record,
-                "status": POOLED_STATUS,
-                "sent": bool(record.get("sent", record.get("status") == SENT_STATUS)),
-            }
+            base_id: _normalize_scoring_fields(
+                {
+                    **record,
+                    "status": POOLED_STATUS,
+                    "sent": bool(record.get("sent", record.get("status") == SENT_STATUS)),
+                }
+            )
             for base_id, record in pooled.items()
         }
         for base_id, record in sent.items():
-            merged[base_id] = {
-                **record,
-                "status": POOLED_STATUS,
-                "sent": True,
-            }
+            merged[base_id] = _normalize_scoring_fields(
+                {
+                    **record,
+                    "status": POOLED_STATUS,
+                    "sent": True,
+                }
+            )
         return {
             "schema_version": SCHEMA_VERSION,
             "pooled_papers": merged,
@@ -94,11 +119,13 @@ def _normalize_state(state: dict) -> dict:
 
     pooled_papers = {}
     for base_id, record in legacy_papers.items():
-        pooled_papers[base_id] = {
-            **record,
-            "status": POOLED_STATUS,
-            "sent": record.get("status") == SENT_STATUS,
-        }
+        pooled_papers[base_id] = _normalize_scoring_fields(
+            {
+                **record,
+                "status": POOLED_STATUS,
+                "sent": record.get("status") == SENT_STATUS,
+            }
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "pooled_papers": pooled_papers,
@@ -139,11 +166,15 @@ def _paper_record(
         "influence_score": (
             influence_score if influence_score is not None else previous.get("influence_score")
         ),
-        "ranking_scores": previous.get("ranking_scores", {}),
-        "ranking_total_score": previous.get("ranking_total_score"),
-        "ranking_tldr": previous.get("ranking_tldr", ""),
-        "ranking_input_hash": _ranking_input_hash(paper),
-        "ranking_scored_input_hash": previous.get("ranking_scored_input_hash"),
+        "scoring_scores": _legacy_value(previous, "scoring_scores", "ranking_scores", {}),
+        "scoring_total_score": _legacy_value(previous, "scoring_total_score", "ranking_total_score"),
+        "scoring_tldr": _legacy_value(previous, "scoring_tldr", "ranking_tldr", ""),
+        "scoring_input_hash": _scoring_input_hash(paper),
+        "scoring_scored_input_hash": _legacy_value(
+            previous,
+            "scoring_scored_input_hash",
+            "ranking_scored_input_hash",
+        ),
     }
     return record
 
@@ -186,8 +217,7 @@ def merge_discovered_papers(
         metadata_changed = existing is None or any(
             existing.get(field) != record.get(field) for field in metadata_fields
         )
-        missing_affiliations = not record.get("affiliations")
-        if (metadata_changed or missing_affiliations) and base_id not in changed_pooled_seen:
+        if metadata_changed and base_id not in changed_pooled_seen:
             changed_pooled_ids.append(base_id)
             changed_pooled_seen.add(base_id)
 
@@ -195,7 +225,14 @@ def merge_discovered_papers(
 
 
 def _record_bucket(state: dict) -> dict:
-    state = _normalize_state(state)
+    if "pooled_papers" not in state:
+        normalized = _normalize_state(state)
+        state.clear()
+        state.update(normalized)
+    else:
+        pooled = state.setdefault("pooled_papers", {})
+        for base_id, record in list(pooled.items()):
+            pooled[base_id] = _normalize_scoring_fields(record)
     return state["pooled_papers"]
 
 
@@ -213,7 +250,7 @@ def set_affiliations(state: dict, affiliations_by_base_id: dict[str, str]) -> No
             bucket[base_id]["affiliations"] = affiliations or "Not specified"
 
 
-def set_ranking_scores(
+def set_scoring_scores(
     state: dict,
     paper_id_to_base_id: dict[str, str],
     scores_by_id: dict[str, dict[str, int]],
@@ -224,22 +261,26 @@ def set_ranking_scores(
     for paper_id, base_id in paper_id_to_base_id.items():
         if base_id in pooled_papers:
             record = pooled_papers[base_id]
-            record["ranking_scores"] = scores_by_id.get(paper_id, {})
-            record["ranking_total_score"] = total_score_by_id.get(paper_id)
+            record["scoring_scores"] = scores_by_id.get(paper_id, {})
+            record["scoring_total_score"] = total_score_by_id.get(paper_id)
             if tldr_by_id is not None:
-                record["ranking_tldr"] = tldr_by_id.get(paper_id, "")
-            record["ranking_scored_input_hash"] = record.get("ranking_input_hash")
+                record["scoring_tldr"] = tldr_by_id.get(paper_id, "")
+            record["scoring_scored_input_hash"] = record.get("scoring_input_hash")
 
 
-def needs_ranking_score(record: dict, aspect_keys: Iterable[str]) -> bool:
-    scores = record.get("ranking_scores")
+def needs_scoring_score(record: dict, aspect_keys: Iterable[str]) -> bool:
+    scores = _legacy_value(record, "scoring_scores", "ranking_scores")
     if not isinstance(scores, dict):
         return True
     if any(not isinstance(scores.get(key), int) for key in aspect_keys):
         return True
-    if record.get("ranking_total_score") is None:
+    if _legacy_value(record, "scoring_total_score", "ranking_total_score") is None:
         return True
-    return record.get("ranking_scored_input_hash") != record.get("ranking_input_hash")
+    return _legacy_value(
+        record,
+        "scoring_scored_input_hash",
+        "ranking_scored_input_hash",
+    ) != _legacy_value(record, "scoring_input_hash", "ranking_input_hash")
 
 
 def pooled_records(state: dict, include_sent: bool = False) -> list[dict]:
@@ -252,7 +293,7 @@ def pooled_records(state: dict, include_sent: bool = False) -> list[dict]:
 
     def sort_key(record: dict) -> tuple[float, str]:
         return (
-            float(record.get("ranking_total_score") or 0),
+            float(_legacy_value(record, "scoring_total_score", "ranking_total_score") or 0),
             record.get("base_arxiv_id", ""),
         )
 

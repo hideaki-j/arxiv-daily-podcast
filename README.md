@@ -49,8 +49,8 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 Edit `my_config/config.yaml` to control the run:
 
 - `influence_filter`, `influence_score_threshold`: provider/model and minimum score (0-5) for pool inclusion; keep the threshold at `3` to include scores `3`, `4`, and `5`. Papers below the threshold remain in state for deduplication but have `in_pool: false` and are not ranked, published, summarized, converted to audio, or used for images.
-- `ranking_aspects_path`, `ranking_max_workers`: separate YAML file for ranking aspect weights and the parallel worker count for per-paper ranking scores.
-- `ranking`, `podcast`, `manga_planner`, `affiliation`: provider/model pairs for each LLM call family.
+- `scoring_aspects_path`, `scoring_max_workers`: separate YAML file for scoring aspect weights and the parallel worker count for per-paper scoring calls.
+- `scoring`, `podcast`, `manga_planner`, `affiliation`: provider/model pairs for each LLM call family.
 - `manga_image`: OpenAI image generation settings for the selected-paper image attachment.
 - `top_n`, `top_n_tts`: how many pooled papers to include in ranking outputs and whether to generate audio for the selected paper.
 - `generate_transcript`, `use_tts`: enable/disable transcripts and mp3 audio.
@@ -113,7 +113,7 @@ The publish email shows four stored-pool statistics. These are computed only fro
 ## FAQ
 
 **Q. Can I use other LLMs?**
-- A. Yes. Swap the nested provider/model pairs such as `ranking.model`, `podcast.model`, `tts.model`, `manga_planner.model`, and `affiliation.model` in `my_config/config.yaml`, then keep `my_config/pricing.json` in sync. Set a provider to `openrouter` only when the relevant code path supports OpenRouter and `OPENROUTER_API_KEY` is configured.
+- A. Yes. Swap the nested provider/model pairs such as `scoring.model`, `podcast.model`, `tts.model`, `manga_planner.model`, and `affiliation.model` in `my_config/config.yaml`, then keep `my_config/pricing.json` in sync. Set a provider to `openrouter` only when the relevant code path supports OpenRouter and `OPENROUTER_API_KEY` is configured.
 
 
 **Q. How much does it cost to run?**
@@ -123,7 +123,7 @@ The publish email shows four stored-pool statistics. These are computed only fro
 **Q. Can I customize the keywords/retrieval/domain?**
 - A. Keywords are fully configurable in `my_config/keywords.yaml`, and limits are in `my_config/config.yaml`.
   - Changing the base arXiv categories (currently `cs.IR` and `cs.CL`) requires a small code tweak in `src/ir_arxiv_ranker/__main__.py` / `src/ir_arxiv_ranker/arxiv_client.py`.
-  - Changing scoring criteria requires edits in `prompt/prompt_scoring.j2` and `my_config/ranking_aspects.yaml` (and, for arXiv query filters, `src/ir_arxiv_ranker/arxiv_client.py`).
+  - Changing scoring criteria requires edits in `prompt/prompt_scoring.j2` and `my_config/scoring_aspects.yaml` (and, for arXiv query filters, `src/ir_arxiv_ranker/arxiv_client.py`).
 
 
 In either case, the only thing you need to do is open Claude Code/Cursor/Antigravity/Copilot/Cline/etc. and **just vibe code it**. 😎

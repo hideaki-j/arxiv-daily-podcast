@@ -84,12 +84,12 @@ Settings in `my_config/config.yaml`:
 | `use_tts` | `true` | Enable/disable audio synthesis |
 | `influence_filter.provider` | `openai` | Provider for author-influence scoring |
 | `influence_filter.model` | `gpt-5-mini-2025-08-07` | Model for author-influence scoring |
-| `ranking.provider` | `openai` | Provider for per-paper ranking |
-| `ranking.model` | `gpt-5-2025-08-07` | Model for paper ranking and selected-paper summaries |
-| `podcast.provider` | `openai` | Provider for transcript generation |
-| `podcast.model` | `gpt-5.5` | Model for transcript generation |
-| `manga_planner.provider` | `openai` | Provider for selected-paper image planning |
-| `manga_planner.model` | `gpt-5.5` | Model for selected-paper image planning |
+| `scoring.provider` | `openai` | Provider for per-paper scoring |
+| `scoring.model` | `gpt-5.4-mini-2026-03-17` | Model for paper scoring and selected-paper summaries |
+| `podcast.provider` | `gemini` | Provider for transcript generation |
+| `podcast.model` | `gemini-3.1-pro-preview` | Model for transcript generation |
+| `manga_planner.provider` | `gemini` | Provider for selected-paper image planning |
+| `manga_planner.model` | `gemini-3.1-pro-preview` | Model for selected-paper image planning |
 | `manga_image.provider` | `openai` | Provider for image generation; must be `openai` |
 | `manga_image.model` | `gpt-image-2` | Model for image generation |
 | `manga_image.size` | `1024x1536` | Generated portrait smartphone-oriented image size |
@@ -102,8 +102,8 @@ Settings in `my_config/config.yaml`:
 | `affiliation.provider` | `gemini` | Provider for affiliation extraction |
 | `affiliation.model` | `gemini-3-flash-preview` | Model for affiliation extraction |
 | `influence_score_threshold` | `3` | Minimum author-influence score (0–5) for pool inclusion; includes scores 3, 4, and 5 |
-| `ranking_aspects_path` | `my_config/ranking_aspects.yaml` | Separate YAML file with positive/negative ranking aspects and weights |
-| `ranking_max_workers` | `150` | Parallel worker count for per-paper ranking aspect scoring |
+| `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects and weights |
+| `scoring_max_workers` | `150` | Parallel worker count for per-paper aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |
 | `compress_to_64kbps` | `true` | Compress mp3 to 64 kbps (requires `ffmpeg`) |
 | `pricing_path` | `my_config/pricing.json` | Path to model pricing JSON |
@@ -190,7 +190,7 @@ src/ir_arxiv_ranker/
   __main__.py        # CLI entry point
   arxiv_client.py    # arXiv API queries and paper fetching
   paper_state.py     # Persistent discovered/sent paper state
-  ranking.py         # LLM-based paper ranking
+  ranking.py         # LLM scoring plus score-based ranking
   selected_summary.py # Selected-paper newsletter description
   podcast.py         # Transcript generation from PDFs
   tts.py             # Text-to-speech synthesis
@@ -220,7 +220,7 @@ my_config/
   config.yaml
   keywords.yaml
   pricing.json
-  ranking_aspects.yaml
+  scoring_aspects.yaml
 .github/workflows/
   arxiv-fetch-score.yml
   arxiv-publish-newsletter.yml

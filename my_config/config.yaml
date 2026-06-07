@@ -11,13 +11,13 @@ influence_filter:
   provider: openai
   model: gpt-5-mini-2025-08-07
 
-ranking:
+scoring:
   provider: openai
-  model: gpt-5-2025-08-07
+  model: gpt-5.4-mini-2026-03-17
 
 podcast:
-  provider: openai
-  model: gpt-5.5
+  provider: gemini
+  model: gemini-3.1-pro-preview
 
 manga_planner:
   provider: openai
@@ -55,5 +55,5 @@ arxiv_timeout: 30
 openai_timeout: 360
 influence_score_threshold: 3
 
-ranking_aspects_path: my_config/ranking_aspects.yaml
-ranking_max_workers: 150
+scoring_aspects_path: my_config/scoring_aspects.yaml
+scoring_max_workers: 150

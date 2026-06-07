@@ -6,12 +6,12 @@ from ir_arxiv_ranker.paper_state import (
     load_paper_state,
     mark_sent,
     merge_discovered_papers,
-    needs_ranking_score,
+    needs_scoring_score,
     pooled_records,
     records_to_papers,
     save_paper_state,
     set_affiliations,
-    set_ranking_scores,
+    set_scoring_scores,
 )
 
 
@@ -192,7 +192,7 @@ def test_records_to_papers_uses_bucket_ids_and_base_mapping():
     assert set(mapping.values()) == {"2406.10000", "2406.20000"}
 
 
-def test_set_ranking_scores_persists_all_scoring_outputs():
+def test_set_scoring_scores_persists_all_scoring_outputs():
     state = {"schema_version": 1, "pooled_papers": {}}
     merge_discovered_papers(
         state,
@@ -201,7 +201,7 @@ def test_set_ranking_scores_persists_all_scoring_outputs():
         seen_at="2026-06-03T12:00:00Z",
     )
 
-    set_ranking_scores(
+    set_scoring_scores(
         state,
         paper_id_to_base_id={"B001": "2406.12345"},
         scores_by_id={"B001": {"legal_domain": 2, "survey": 1}},
@@ -210,14 +210,14 @@ def test_set_ranking_scores_persists_all_scoring_outputs():
     )
 
     record = state["pooled_papers"]["2406.12345"]
-    assert record["ranking_scores"] == {"legal_domain": 2, "survey": 1}
-    assert record["ranking_total_score"] == 1.0
-    assert record["ranking_tldr"] == "Short summary."
-    assert record["ranking_scored_input_hash"] == record["ranking_input_hash"]
-    assert not needs_ranking_score(record, ["legal_domain", "survey"])
+    assert record["scoring_scores"] == {"legal_domain": 2, "survey": 1}
+    assert record["scoring_total_score"] == 1.0
+    assert record["scoring_tldr"] == "Short summary."
+    assert record["scoring_scored_input_hash"] == record["scoring_input_hash"]
+    assert not needs_scoring_score(record, ["legal_domain", "survey"])
 
 
-def test_needs_ranking_score_when_paper_input_changes():
+def test_needs_scoring_score_when_paper_input_changes():
     state = {"schema_version": 1, "pooled_papers": {}}
     merge_discovered_papers(
         state,
@@ -225,7 +225,7 @@ def test_needs_ranking_score_when_paper_input_changes():
         scores_by_id={"IR001": 5},
         seen_at="2026-06-03T12:00:00Z",
     )
-    set_ranking_scores(
+    set_scoring_scores(
         state,
         paper_id_to_base_id={"B001": "2406.12345"},
         scores_by_id={"B001": {"legal_domain": 2, "survey": 1}},
@@ -241,7 +241,18 @@ def test_needs_ranking_score_when_paper_input_changes():
     )
 
     record = state["pooled_papers"]["2406.12345"]
-    assert needs_ranking_score(record, ["legal_domain", "survey"])
+    assert needs_scoring_score(record, ["legal_domain", "survey"])
+
+
+def test_needs_scoring_score_accepts_legacy_ranking_fields():
+    record = {
+        "ranking_scores": {"legal_domain": 2, "survey": 1},
+        "ranking_total_score": 1.0,
+        "ranking_input_hash": "same",
+        "ranking_scored_input_hash": "same",
+    }
+
+    assert not needs_scoring_score(record, ["legal_domain", "survey"])
 
 
 def test_save_and_load_state_roundtrip(tmp_path):

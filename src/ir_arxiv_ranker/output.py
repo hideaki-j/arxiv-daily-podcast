@@ -66,8 +66,8 @@ def write_csv(
                 "uploaded_at",
                 "author_influence_threshold",
                 "tldr",
-                "ranking_total_score",
-                "ranking_scores",
+                "scoring_total_score",
+                "scoring_scores",
                 "automatic_eval_ranking",
                 "user_simulator_ranking",
                 "final_ranking",
@@ -116,8 +116,8 @@ def write_results_json(
             "automatic_eval_ranking": rankings.automatic_eval_ranking,
             "user_simulator_ranking": rankings.user_simulator_ranking,
             "final_ranking": rankings.final_ranking,
-            "ranking_total_scores": rankings.total_score_by_id,
-            "ranking_scores": rankings.scores_by_id,
+            "scoring_total_scores": rankings.total_score_by_id,
+            "scoring_scores": rankings.scores_by_id,
         },
         "papers": [
             {
@@ -131,8 +131,8 @@ def write_results_json(
                 "pdf_url": paper.pdf_url,
                 "tldr": (tldr_by_id or {}).get(paper.paper_id, ""),
                 "summary_sections": (summary_sections_by_id or {}).get(paper.paper_id, {}),
-                "ranking_total_score": rankings.total_score_by_id.get(paper.paper_id),
-                "ranking_scores": rankings.scores_by_id.get(paper.paper_id, {}),
+                "scoring_total_score": rankings.total_score_by_id.get(paper.paper_id),
+                "scoring_scores": rankings.scores_by_id.get(paper.paper_id, {}),
                 "author_influence_threshold": (
                     (author_influence_by_id or {}).get(paper.paper_id)
                 ),
