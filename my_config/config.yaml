@@ -20,8 +20,8 @@ podcast:
   model: gemini-3.1-pro-preview
 
 manga_planner:
-  provider: openai
-  model: gpt-5.5
+  provider: gemini
+  model: gemini-3.1-pro-preview
 
 manga_image:
   provider: openai
