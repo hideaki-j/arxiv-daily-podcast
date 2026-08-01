@@ -1019,14 +1019,14 @@ def main() -> None:
                     {
                         "label": "author influence",
                         "score": str(author_score),
-                        "range": "0-5",
+                        "range": "0-4 or 8",
                         "polarity": "plus",
                         "contribution": f"{float(author_score):+.1f}",
                         "contribution_tone": _contribution_tone(float(author_score)),
                     }
                 )
                 lines.append(
-                    f"- author influence: {author_score} (0-5) "
+                    f"- author influence: {author_score} (0-4 or 8) "
                     f"(plus, {float(author_score):+.1f})"
                 )
             lines.append("")

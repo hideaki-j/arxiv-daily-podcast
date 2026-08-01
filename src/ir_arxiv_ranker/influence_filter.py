@@ -12,7 +12,8 @@ from .models import Paper
 
 
 INFLUENCE_SCORE_MIN = 0
-INFLUENCE_SCORE_MAX = 5
+INFLUENCE_SCORE_MAX = 8
+VALID_INFLUENCE_SCORES = frozenset({0, 1, 2, 3, 4, 8})
 DEFAULT_INFLUENCE_MAX_WORKERS = 150
 
 
@@ -32,6 +33,7 @@ def _build_response_format() -> dict:
             "properties": {
                 "author_influence_score": {
                     "type": "integer",
+                    "enum": sorted(VALID_INFLUENCE_SCORES),
                 },
                 "rationale": {"type": "string"},
             },
@@ -46,7 +48,7 @@ def _validate_response(payload: dict) -> int | None:
     score = payload.get("author_influence_score")
     if not isinstance(score, int):
         return None
-    if score < INFLUENCE_SCORE_MIN or score > INFLUENCE_SCORE_MAX:
+    if score not in VALID_INFLUENCE_SCORES:
         return None
     return score
 

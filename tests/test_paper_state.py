@@ -74,13 +74,46 @@ def test_load_two_bucket_state_migrates_sent_bucket_to_pool(tmp_path):
     assert state["pooled_papers"]["2406.2"]["sent"] is False
 
 
+def test_load_state_migrates_legacy_priority_score_and_aggregate_totals(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text(
+        """
+        {
+          "schema_version": 1,
+          "pooled_papers": {
+            "2406.1": {
+              "base_arxiv_id": "2406.1",
+              "influence_score": 5,
+              "scoring_scores": {"author_influence_score": 5, "legal_domain": 2},
+              "scoring_total_score": 7.0,
+              "ranking_scores": {"author_influence_score": 5, "legal_domain": 2},
+              "ranking_total_score": 7.0
+            }
+          }
+        }
+        """
+    )
+
+    state = load_paper_state(path)
+    record = state["pooled_papers"]["2406.1"]
+
+    assert record["influence_score"] == 8
+    assert record["scoring_scores"]["author_influence_score"] == 8
+    assert record["scoring_total_score"] == 10.0
+    assert record["ranking_scores"]["author_influence_score"] == 8
+    assert record["ranking_total_score"] == 10.0
+
+    save_paper_state(path, state)
+    assert load_paper_state(path) == state
+
+
 def test_merge_pools_all_papers_and_stores_affiliations():
     state = {"schema_version": 1, "pooled_papers": {}}
 
     changed = merge_discovered_papers(
         state,
         [_paper("2406.12345v1"), _paper("2406.99999v1", paper_id="CL001")],
-        scores_by_id={"IR001": 5, "CL001": 4},
+        scores_by_id={"IR001": 8, "CL001": 4},
         seen_at="2026-06-03T12:00:00Z",
     )
     set_affiliations(state, {"2406.12345": "University of Waterloo"})
@@ -88,7 +121,7 @@ def test_merge_pools_all_papers_and_stores_affiliations():
     assert base_arxiv_id("2406.12345v1") == "2406.12345"
     assert changed == ["2406.12345", "2406.99999"]
     assert set(state["pooled_papers"]) == {"2406.12345", "2406.99999"}
-    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 5
+    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 8
     assert state["pooled_papers"]["2406.99999"]["influence_score"] == 4
     assert state["pooled_papers"]["2406.12345"]["in_pool"] is True
     assert state["pooled_papers"]["2406.99999"]["in_pool"] is True
@@ -116,7 +149,7 @@ def test_sent_paper_stays_in_pool_and_is_excluded_from_unsent_records():
     merge_discovered_papers(
         state,
         [_paper("2406.12345v1")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
     mark_sent(state, "2406.12345", "2026-06-03T13:00:00Z", "run-1")
@@ -124,7 +157,7 @@ def test_sent_paper_stays_in_pool_and_is_excluded_from_unsent_records():
     changed = merge_discovered_papers(
         state,
         [_paper("2406.12345v2", title="Updated sent paper")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-04T12:00:00Z",
     )
 
@@ -142,7 +175,7 @@ def test_missing_influence_score_does_not_wipe_existing_value():
     merge_discovered_papers(
         state,
         [_paper("2406.12345v1")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
 
@@ -154,7 +187,7 @@ def test_missing_influence_score_does_not_wipe_existing_value():
     )
 
     assert changed == []
-    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 5
+    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 8
 
 
 def test_existing_paper_influence_score_is_not_refreshed():
@@ -162,7 +195,7 @@ def test_existing_paper_influence_score_is_not_refreshed():
     merge_discovered_papers(
         state,
         [_paper("2406.12345v1")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
 
@@ -174,7 +207,7 @@ def test_existing_paper_influence_score_is_not_refreshed():
     )
 
     assert changed == []
-    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 5
+    assert state["pooled_papers"]["2406.12345"]["influence_score"] == 8
 
 
 def test_records_to_papers_uses_bucket_ids_and_base_mapping():
@@ -182,7 +215,7 @@ def test_records_to_papers_uses_bucket_ids_and_base_mapping():
     merge_discovered_papers(
         state,
         [_paper("2406.10000v1"), _paper("2406.20000v1", paper_id="CL001")],
-        scores_by_id={"IR001": 5, "CL001": 5},
+        scores_by_id={"IR001": 8, "CL001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
 
@@ -197,7 +230,7 @@ def test_set_scoring_scores_persists_all_scoring_outputs():
     merge_discovered_papers(
         state,
         [_paper("2406.12345v1")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
 
@@ -222,7 +255,7 @@ def test_needs_scoring_score_when_paper_input_changes():
     merge_discovered_papers(
         state,
         [_paper("2406.12345v1")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
     set_scoring_scores(
@@ -236,7 +269,7 @@ def test_needs_scoring_score_when_paper_input_changes():
     merge_discovered_papers(
         state,
         [_paper("2406.12345v2", title="Updated paper")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-04T12:00:00Z",
     )
 
@@ -261,7 +294,7 @@ def test_save_and_load_state_roundtrip(tmp_path):
     merge_discovered_papers(
         state,
         [_paper("2406.12345v1")],
-        scores_by_id={"IR001": 5},
+        scores_by_id={"IR001": 8},
         seen_at="2026-06-03T12:00:00Z",
     )
 

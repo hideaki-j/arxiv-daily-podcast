@@ -101,7 +101,7 @@ Settings in `my_config/config.yaml`:
 | `tts.voice` | `Zephyr` | Voice ID for TTS |
 | `affiliation.provider` | `gemini` | Provider for affiliation extraction |
 | `affiliation.model` | `gemini-3-flash-preview` | Model for affiliation extraction |
-| `influence_score_threshold` | `3` | Minimum author-influence score (0–5) for pool inclusion; includes scores 3, 4, and 5 |
+| `influence_score_threshold` | `3` | Minimum author-influence score for pool inclusion; allowed scores are 0–4 and 8 (priority match), so this includes 3, 4, and 8 |
 | `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects and weights |
 | `scoring_max_workers` | `150` | Parallel worker count for per-paper aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |

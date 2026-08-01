@@ -206,8 +206,8 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("openai_timeout must be an integer >= 1")
     if not isinstance(influence_score_threshold, int):
         raise SystemExit("influence_score_threshold must be an integer")
-    if influence_score_threshold < 0 or influence_score_threshold > 5:
-        raise SystemExit("influence_score_threshold must be between 0 and 5")
+    if influence_score_threshold < 0 or influence_score_threshold > 8:
+        raise SystemExit("influence_score_threshold must be between 0 and 8")
     if influence_max_workers is not None:
         if not isinstance(influence_max_workers, int) or influence_max_workers < 1:
             raise SystemExit("influence_max_workers must be an integer >= 1")

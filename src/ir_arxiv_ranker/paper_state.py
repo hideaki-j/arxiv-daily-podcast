@@ -13,6 +13,8 @@ from .models import Paper
 SCHEMA_VERSION = 1
 SENT_STATUS = "sent"
 POOLED_STATUS = "pooled"
+LEGACY_PRIORITY_INFLUENCE_SCORE = 5
+PRIORITY_INFLUENCE_SCORE = 8
 
 
 def _legacy_value(record: dict, key: str, legacy_key: str, default=None):
@@ -81,6 +83,29 @@ def _normalize_scoring_fields(record: dict) -> dict:
             normalized[key] = normalized[legacy_key]
         elif key not in normalized and default is not None:
             normalized[key] = default
+
+    if normalized.get("influence_score") == LEGACY_PRIORITY_INFLUENCE_SCORE:
+        normalized["influence_score"] = PRIORITY_INFLUENCE_SCORE
+
+    score_and_total_fields = (
+        ("scoring_scores", "scoring_total_score"),
+        ("ranking_scores", "ranking_total_score"),
+    )
+    for scores_key, total_key in score_and_total_fields:
+        scores = normalized.get(scores_key)
+        if not isinstance(scores, dict):
+            continue
+        if scores.get("author_influence_score") != LEGACY_PRIORITY_INFLUENCE_SCORE:
+            continue
+        normalized[scores_key] = {
+            **scores,
+            "author_influence_score": PRIORITY_INFLUENCE_SCORE,
+        }
+        total = normalized.get(total_key)
+        if isinstance(total, (int, float)) and not isinstance(total, bool):
+            normalized[total_key] = total + (
+                PRIORITY_INFLUENCE_SCORE - LEGACY_PRIORITY_INFLUENCE_SCORE
+            )
     return normalized
 
 
