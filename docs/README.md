@@ -82,10 +82,10 @@ Settings in `my_config/config.yaml`:
 | `generate_manga_image` | `true` | Enable/disable selected-paper image generation |
 | `filter_since_last_schedule` | `true` | Ignored in bucket mode; paper-state deduplication controls repeat notifications |
 | `use_tts` | `true` | Enable/disable audio synthesis |
-| `influence_filter.provider` | `openai` | Provider for author-influence scoring |
-| `influence_filter.model` | `gpt-5-mini-2025-08-07` | Model for author-influence scoring |
-| `scoring.provider` | `openai` | Provider for per-paper scoring |
-| `scoring.model` | `gpt-5.4-mini-2026-03-17` | Model for paper scoring and selected-paper summaries |
+| `influence_filter.provider` | `gemini` | Provider for author-influence scoring |
+| `influence_filter.model` | `gemini-3.7-flash` | Model for author-influence scoring |
+| `scoring.provider` | `gemini` | Provider for per-paper scoring |
+| `scoring.model` | `gemini-3.7-flash` | Model for paper scoring |
 | `podcast.provider` | `gemini` | Provider for transcript generation |
 | `podcast.model` | `gemini-3.1-pro-preview` | Model for transcript generation |
 | `manga_planner.provider` | `gemini` | Provider for selected-paper image planning |

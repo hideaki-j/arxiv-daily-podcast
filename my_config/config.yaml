@@ -8,12 +8,12 @@ include_keyword_papers: false
 
 # LLM Call Configurations
 influence_filter:
-  provider: openai
-  model: gpt-5-mini-2025-08-07
+  provider: gemini
+  model: gemini-3.7-flash
 
 scoring:
-  provider: openai
-  model: gpt-5.4-mini-2026-03-17
+  provider: gemini
+  model: gemini-3.7-flash
 
 podcast:
   provider: gemini
