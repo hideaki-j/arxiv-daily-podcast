@@ -29,7 +29,7 @@ positive:
     label: covering prompt optimization or prompting techniques
     weight: 1
   agentic_search_or_deep_research:
-    label: agentic search / deep research
+    label: agent search method
     guidance: >-
       Score 2 when agentic search is a central research focus, including work
       on deep research agents as a form of agentic search. Score 1 when agentic
