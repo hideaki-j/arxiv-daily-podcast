@@ -144,6 +144,14 @@ def _format_total_cost(cost_tracker: CostTracker) -> str:
     return f"{total_cents:.2f}¢{suffix}"
 
 
+def _meets_minimum_email_score(total_score: float | None, minimum_score: float) -> bool:
+    return (
+        isinstance(total_score, (int, float))
+        and not isinstance(total_score, bool)
+        and total_score >= minimum_score
+    )
+
+
 def _cost_stage_label(label: str) -> str:
     stage = re.sub(r"\s+\d+$", "", label).strip()
     return re.sub(r"\s+LLM\b", "", stage, flags=re.IGNORECASE).strip()
@@ -392,6 +400,7 @@ def main() -> None:
     tts_voice = settings.tts.voice if settings.tts else None
     compress_to_64kbps = settings.compress_to_64kbps
     email_enabled = settings.email_enabled
+    minimum_email_score = settings.minimum_email_score
     pricing_data = settings.pricing_data
     influence_prompt_path = DEFAULT_INFLUENCE_PROMPT_PATH
     influence_score_threshold = settings.influence_score_threshold
@@ -414,8 +423,6 @@ def main() -> None:
     if email_enabled and run_publish:
         gmail_address = os.getenv("GMAIL_ADDRESS")
         gmail_password = os.getenv("GMAIL_APP_PASSWORD")
-        if not gmail_address or not gmail_password:
-            raise SystemExit("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set in .env")
 
     fallback_note: str | None = None
     if filter_since_last_schedule:
@@ -748,12 +755,28 @@ def main() -> None:
     )
     print("Ranking complete.")
 
+    winner_id = rankings.final_ranking[0]
+    winner_score = rankings.total_score_by_id.get(winner_id)
+    if (
+        email_enabled
+        and minimum_email_score is not None
+        and not _meets_minimum_email_score(winner_score, minimum_email_score)
+    ):
+        displayed_score = "missing" if winner_score is None else f"{winner_score:.1f}"
+        print(
+            f"Email skipped: highest total score {displayed_score} is below the "
+            f"minimum {minimum_email_score:g}."
+        )
+        print(f"Total estimated cost: {_format_total_cost(cost_tracker)}.")
+        return
+    if email_enabled and (not gmail_address or not gmail_password):
+        raise SystemExit("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set in .env")
+
     if run_dir is None:
         run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
 
     papers_by_id = {paper.paper_id: paper for paper in papers}
     winner_ids = rankings.final_ranking[:1]
-    winner_id = winner_ids[0]
     winner_base_id = paper_id_to_base_id[winner_id]
     winner_base_ids = {paper_id_to_base_id[paper_id] for paper_id in winner_ids}
     selected_papers = [papers_by_id[paper_id] for paper_id in winner_ids]

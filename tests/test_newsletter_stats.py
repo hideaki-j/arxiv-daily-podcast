@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from ir_arxiv_ranker.__main__ import (
     _cost_breakdown_rows,
     _count_record_sources,
+    _meets_minimum_email_score,
     _records_after_sending,
     _unsent_pool_statistics,
 )
@@ -80,3 +81,10 @@ def test_cost_breakdown_rows_group_by_stage_and_model():
             "cost": "unknown",
         },
     ]
+
+
+def test_minimum_email_score_is_inclusive():
+    assert _meets_minimum_email_score(9.0, 9.0)
+    assert _meets_minimum_email_score(10.0, 9.0)
+    assert not _meets_minimum_email_score(8.99, 9.0)
+    assert not _meets_minimum_email_score(None, 9.0)

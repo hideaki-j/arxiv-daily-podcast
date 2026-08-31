@@ -55,6 +55,7 @@ class Settings:
     filter_since_last_schedule: bool
     use_tts: bool
     email_enabled: bool
+    minimum_email_score: float | None
     arxiv_timeout: int
     openai_timeout: int
     influence_score_threshold: int
@@ -160,6 +161,7 @@ def load_config(config_path: Path) -> Settings:
     include_keyword_papers = raw_config.get("include_keyword_papers", True)
     compress_to_64kbps = raw_config.get("compress_to_64kbps", True)
     email_enabled = raw_config.get("email_enabled", False)
+    minimum_email_score = raw_config.get("minimum_email_score")
     pricing_path = raw_config.get("pricing_path")
     arxiv_timeout = raw_config.get("arxiv_timeout")
     openai_timeout = raw_config.get("openai_timeout")
@@ -181,6 +183,13 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("compress_to_64kbps must be a boolean")
     if not isinstance(include_keyword_papers, bool):
         raise SystemExit("include_keyword_papers must be a boolean")
+    if minimum_email_score is not None:
+        if (
+            isinstance(minimum_email_score, bool)
+            or not isinstance(minimum_email_score, (int, float))
+            or minimum_email_score < 0
+        ):
+            raise SystemExit("minimum_email_score must be a number >= 0 or null")
 
     # Validate integer settings
     if not isinstance(ir_limit, int) or ir_limit < 1:
@@ -290,6 +299,9 @@ def load_config(config_path: Path) -> Settings:
         filter_since_last_schedule=filter_since_last_schedule,
         use_tts=use_tts,
         email_enabled=email_enabled,
+        minimum_email_score=(
+            float(minimum_email_score) if minimum_email_score is not None else None
+        ),
         arxiv_timeout=arxiv_timeout,
         openai_timeout=openai_timeout,
         influence_score_threshold=influence_score_threshold,

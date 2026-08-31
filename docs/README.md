@@ -78,6 +78,7 @@ Settings in `my_config/config.yaml`:
 | Setting | Current Value | Description |
 |---------|---------------|-------------|
 | `email_enabled` | `true` | Enable/disable email sending |
+| `minimum_email_score` | `9` | Minimum inclusive total score required for email publishing; a lower-scoring winner remains unsent and downstream generation is skipped |
 | `generate_transcript` | `true` | Enable/disable transcript generation |
 | `generate_manga_image` | `true` | Enable/disable selected-paper image generation |
 | `filter_since_last_schedule` | `true` | Ignored in bucket mode; paper-state deduplication controls repeat notifications |

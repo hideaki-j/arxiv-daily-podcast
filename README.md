@@ -32,7 +32,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 ## CLI stages
 
 - `--stage fetch-score`: fetches arXiv papers, merges them into `state/discovered_papers.json`, scores author influence, marks only papers with `in_pool: true` for the active author-influence threshold, extracts affiliations for those pool records, scores them, and saves the scored pool.
-- `--stage publish`: reads `state/discovered_papers.json`, selects the highest-ranked unsent `in_pool: true` paper, generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
+- `--stage publish`: reads `state/discovered_papers.json` and selects the highest-ranked unsent `in_pool: true` paper. When email is enabled, it stops without publishing if the total score is below `minimum_email_score`. Otherwise it generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
 - `--stage all`: runs both stages in one process. This is the default for local manual runs.
 
 ## Setup Daily Newsletter & Podcast with GitHub Actions
@@ -57,6 +57,7 @@ Edit `my_config/config.yaml` to control the run:
 - `generate_manga_image`: enable/disable selected-paper image generation.
 - `include_keyword_papers`: set to `false` for IR/CL only mode (excludes keyword-matched papers).
 - `email_enabled`: enable/disable Gmail delivery.
+- `minimum_email_score`: minimum inclusive total score required to generate and send an enabled email; currently `9`.
 - `keywords_path`: keyword list for discovery.
 
 Environment variables depend on the enabled providers:
