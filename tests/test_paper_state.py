@@ -142,6 +142,10 @@ def test_merge_marks_below_threshold_papers_out_of_pool():
     assert state["pooled_papers"]["2406.12345"]["in_pool"] is True
     assert state["pooled_papers"]["2406.99999"]["in_pool"] is False
     assert [record["base_arxiv_id"] for record in pooled_records(state)] == ["2406.12345"]
+    assert {
+        record["base_arxiv_id"]
+        for record in pooled_records(state, include_out_of_pool=True)
+    } == {"2406.12345", "2406.99999"}
 
 
 def test_sent_paper_stays_in_pool_and_is_excluded_from_unsent_records():

@@ -308,11 +308,15 @@ def needs_scoring_score(record: dict, aspect_keys: Iterable[str]) -> bool:
     ) != _legacy_value(record, "scoring_input_hash", "ranking_input_hash")
 
 
-def pooled_records(state: dict, include_sent: bool = False) -> list[dict]:
+def pooled_records(
+    state: dict,
+    include_sent: bool = False,
+    include_out_of_pool: bool = False,
+) -> list[dict]:
     records = [
         record
         for record in state.get("pooled_papers", {}).values()
-        if record.get("in_pool", True)
+        if include_out_of_pool or record.get("in_pool", True)
         if include_sent or not record.get("sent")
     ]
 

@@ -648,7 +648,10 @@ def main() -> None:
                 )
         save_paper_state(state_path, paper_state)
         print(f"Saved paper bucket state to {state_path}")
-    candidate_records = pooled_records(paper_state)
+    candidate_records = pooled_records(
+        paper_state,
+        include_out_of_pool=args.stage == "rescore-pool",
+    )
     if not candidate_records:
         print("No pooled papers available; skipping ranking and email.")
         if run_dir is not None:
