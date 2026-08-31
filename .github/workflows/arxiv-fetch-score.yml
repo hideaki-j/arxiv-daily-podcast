@@ -6,6 +6,15 @@ on:
     # 06:00-16:00 UTC, away from the busiest post-announcement period.
     - cron: "0 6-16 * * 1-5"
   workflow_dispatch:
+    inputs:
+      stage:
+        description: Pipeline stage to run
+        required: true
+        default: fetch-score
+        type: choice
+        options:
+          - fetch-score
+          - rescore-pool
 
 concurrency:
   group: paper-state
@@ -158,7 +167,8 @@ jobs:
         working-directory: app
         env:
           PAPER_STATE_PATH: ../paper-state/state/discovered_papers.json
-        run: uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage fetch-score
+          PIPELINE_STAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || 'fetch-score' }}
+        run: uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage "$PIPELINE_STAGE"
       - name: Commit updated paper state
         if: always() && steps.fetch_score_gate.outputs.should_run == 'true'
         working-directory: paper-state

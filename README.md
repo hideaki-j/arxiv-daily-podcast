@@ -23,6 +23,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml
 
 # Or run the same split used by GitHub Actions
 uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage fetch-score
+uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage rescore-pool
 uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 
 # 5. (Optional) Setup GitHub Actions for automatic daily runs
@@ -32,6 +33,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 ## CLI stages
 
 - `--stage fetch-score`: fetches arXiv papers, merges them into `state/discovered_papers.json`, scores author influence, marks only papers with `in_pool: true` for the active author-influence threshold, extracts affiliations for those pool records, scores them, and saves the scored pool.
+- `--stage rescore-pool`: re-evaluates stored unsent pool records that are missing required rubric scores, checkpointing every 100 papers without fetching, author-influence scoring, affiliation extraction, or publishing.
 - `--stage publish`: reads `state/discovered_papers.json` and selects the highest-ranked unsent `in_pool: true` paper. When email is enabled, it stops without publishing if the total score is below `minimum_email_score`. Otherwise it generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
 - `--stage all`: runs both stages in one process. This is the default for local manual runs.
 

@@ -65,6 +65,7 @@ DEFAULT_STATE_PATH = Path("state") / "discovered_papers.json"
 SELECTED_SUMMARY_MODEL = "gemini-3.1-pro-preview"
 SELECTED_SUMMARY_PROVIDER = "gemini"
 AFFILIATION_TOKEN_LIMIT = 200
+SCORING_BATCH_SIZE = 100
 
 
 def _parse_args() -> argparse.Namespace:
@@ -77,12 +78,13 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--stage",
-        choices=("all", "fetch-score", "publish"),
+        choices=("all", "fetch-score", "rescore-pool", "publish"),
         default="all",
         help=(
             "Pipeline stage to run: fetch-score discovers arXiv papers and stores "
-            "scoring results; publish reads stored papers and generates the newsletter, "
-            "transcript/audio, and image."
+            "scoring results; rescore-pool updates stored rubric scores without fetching; "
+            "publish reads stored papers and generates the newsletter, transcript/audio, "
+            "and image."
         ),
     )
     return parser.parse_args()
@@ -363,6 +365,7 @@ def main() -> None:
     load_dotenv()
     args = _parse_args()
     run_fetch_score = args.stage in {"all", "fetch-score"}
+    run_score_pool = args.stage in {"all", "fetch-score", "rescore-pool"}
     run_publish = args.stage in {"all", "publish"}
 
     settings = load_config(args.config)
@@ -666,7 +669,7 @@ def main() -> None:
         applicable_aspects = applicable_scoring_aspects(
             scoring_aspects, record.get("first_seen_at")
         )
-        if run_fetch_score and needs_scoring_score(
+        if run_score_pool and needs_scoring_score(
             record, [aspect.key for aspect in applicable_aspects]
         ):
             scoring_items.append((paper, applicable_aspects))
@@ -680,41 +683,52 @@ def main() -> None:
             group_papers.append(paper)
 
         print(f"Scoring {len(scoring_items)} new or changed pooled paper(s) with LLM...")
-        for scoring_papers, group_aspects in scoring_groups.values():
-            scoring_paper_id_to_base_id = {
-                paper.paper_id: paper_id_to_base_id[paper.paper_id]
-                for paper in scoring_papers
-            }
-            scoring_author_influence_by_id = {
-                paper.paper_id: author_influence_by_id[paper.paper_id]
-                for paper in scoring_papers
-                if paper.paper_id in author_influence_by_id
-            }
-            scoring_rankings = score_papers(
-                client=scoring_client,
-                model=scoring_model,
-                scoring_prompt_template=scoring_prompt_template,
-                papers=scoring_papers,
-                top_n=len(scoring_papers),
-                author_influence_by_id=scoring_author_influence_by_id,
-                abstract_word_cutoff=abst_word_cutoff,
-                pricing=scoring_pricing,
-                cost_tracker=cost_tracker,
-                cost_report=cost_report,
-                openai_timeout=openai_timeout,
-                provider=scoring_provider,
-                include_keyword_papers=include_keyword_papers,
-                aspects=group_aspects,
-                max_workers=scoring_max_workers,
-            )
-            set_scoring_scores(
-                paper_state,
-                paper_id_to_base_id=scoring_paper_id_to_base_id,
-                scores_by_id=scoring_rankings.scores_by_id,
-                total_score_by_id=scoring_rankings.total_score_by_id,
-            )
+        completed_count = 0
+        for group_papers, group_aspects in scoring_groups.values():
+            for batch_start in range(0, len(group_papers), SCORING_BATCH_SIZE):
+                scoring_papers = group_papers[
+                    batch_start : batch_start + SCORING_BATCH_SIZE
+                ]
+                scoring_paper_id_to_base_id = {
+                    paper.paper_id: paper_id_to_base_id[paper.paper_id]
+                    for paper in scoring_papers
+                }
+                scoring_author_influence_by_id = {
+                    paper.paper_id: author_influence_by_id[paper.paper_id]
+                    for paper in scoring_papers
+                    if paper.paper_id in author_influence_by_id
+                }
+                scoring_rankings = score_papers(
+                    client=scoring_client,
+                    model=scoring_model,
+                    scoring_prompt_template=scoring_prompt_template,
+                    papers=scoring_papers,
+                    top_n=len(scoring_papers),
+                    author_influence_by_id=scoring_author_influence_by_id,
+                    abstract_word_cutoff=abst_word_cutoff,
+                    pricing=scoring_pricing,
+                    cost_tracker=cost_tracker,
+                    cost_report=cost_report,
+                    openai_timeout=openai_timeout,
+                    provider=scoring_provider,
+                    include_keyword_papers=include_keyword_papers,
+                    aspects=group_aspects,
+                    max_workers=scoring_max_workers,
+                )
+                set_scoring_scores(
+                    paper_state,
+                    paper_id_to_base_id=scoring_paper_id_to_base_id,
+                    scores_by_id=scoring_rankings.scores_by_id,
+                    total_score_by_id=scoring_rankings.total_score_by_id,
+                )
+                save_paper_state(state_path, paper_state)
+                completed_count += len(scoring_papers)
+                print(
+                    f"Checkpointed scoring results for {completed_count}/"
+                    f"{len(scoring_items)} paper(s)."
+                )
     else:
-        if run_fetch_score:
+        if run_score_pool:
             print("No pooled papers need scoring; reusing existing scores.")
         else:
             print("Reusing stored scoring results.")

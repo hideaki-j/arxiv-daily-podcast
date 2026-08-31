@@ -70,6 +70,9 @@ The automation is intentionally split into two workflow files:
 | ArXiv Publish Newsletter | `.github/workflows/arxiv-publish-newsletter.yml` | Read stored state, generate newsletter/transcript/audio/image, send email, and mark the selected paper sent | 10:00 `America/Toronto` every day, including weekends and holidays; no retry dispatcher |
 
 Both workflows use the same `paper-state` concurrency group so state commits do not overlap. The app code is checked out from `master`; the persistent paper state is checked out from the `paper-state` branch.
+Manual runs of the fetch-score workflow can select `rescore-pool` to update missing
+rubric scores only. Results are checkpointed every 100 papers before the workflow
+commits the state branch.
 
 ## Configuration
 

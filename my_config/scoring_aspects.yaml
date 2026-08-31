@@ -39,4 +39,3 @@ positive:
       retrieval-augmented generation unless it explicitly investigates the
       capabilities of agentic search or deep research agents.
     weight: 1
-    effective_from: "2026-08-31T20:31:40Z"
