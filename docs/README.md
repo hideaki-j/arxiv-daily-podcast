@@ -102,7 +102,7 @@ Settings in `my_config/config.yaml`:
 | `affiliation.provider` | `gemini` | Provider for affiliation extraction |
 | `affiliation.model` | `gemini-3-flash-preview` | Model for affiliation extraction |
 | `influence_score_threshold` | `3` | Minimum author-influence score for pool inclusion; allowed scores are 0–4 and 8 (priority match), so this includes 3, 4, and 8 |
-| `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects and weights |
+| `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects, guidance, weights, and optional forward-only rollout via an `effective_from` timestamp |
 | `scoring_max_workers` | `150` | Parallel worker count for per-paper aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |
 | `compress_to_64kbps` | `true` | Compress mp3 to 64 kbps (requires `ffmpeg`) |

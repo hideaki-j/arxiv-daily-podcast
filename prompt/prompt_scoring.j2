@@ -16,7 +16,7 @@ Rules:
 
 Aspects:
 {% for aspect in aspects %}
-- {{ aspect.key }}: {{ aspect.label }}
+- {{ aspect.key }}: {{ aspect.label }}{% if aspect.guidance %}. {{ aspect.guidance }}{% endif %}
 {% endfor %}
 
 PAPER:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -22,6 +23,8 @@ class ScoringAspect:
     label: str
     weight: float
     polarity: str
+    guidance: str = ""
+    effective_from: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -49,24 +52,82 @@ def load_scoring_aspects(path: Path) -> list[ScoringAspect]:
         for key, config in group.items():
             if not isinstance(key, str) or not key:
                 raise SystemExit(f"scoring_aspects.{polarity} contains an invalid key")
+            guidance = ""
+            effective_from = None
             if isinstance(config, str):
                 label = config
                 weight = 1.0
             elif isinstance(config, dict):
                 label = config.get("label")
                 weight = config.get("weight", 1)
+                guidance = config.get("guidance", "")
+                raw_effective_from = config.get("effective_from")
+                if raw_effective_from is not None:
+                    if not isinstance(raw_effective_from, str):
+                        raise SystemExit(
+                            f"scoring_aspects.{polarity}.{key}.effective_from must be an "
+                            "ISO-8601 timestamp string"
+                        )
+                    try:
+                        effective_from = datetime.fromisoformat(
+                            raw_effective_from.replace("Z", "+00:00")
+                        )
+                    except ValueError as exc:
+                        raise SystemExit(
+                            f"scoring_aspects.{polarity}.{key}.effective_from must be a valid "
+                            "ISO-8601 timestamp"
+                        ) from exc
+                    if effective_from.tzinfo is None:
+                        raise SystemExit(
+                            f"scoring_aspects.{polarity}.{key}.effective_from must include a "
+                            "timezone"
+                        )
+                    effective_from = effective_from.astimezone(timezone.utc)
             else:
                 raise SystemExit(f"scoring_aspects.{polarity}.{key} must be a mapping or string")
             if not isinstance(label, str) or not label:
                 raise SystemExit(f"scoring_aspects.{polarity}.{key}.label must be a non-empty string")
             if not isinstance(weight, (int, float)) or weight < 0:
                 raise SystemExit(f"scoring_aspects.{polarity}.{key}.weight must be >= 0")
+            if not isinstance(guidance, str):
+                raise SystemExit(f"scoring_aspects.{polarity}.{key}.guidance must be a string")
             aspects.append(
-                ScoringAspect(key=key, label=label, weight=float(weight), polarity=polarity)
+                ScoringAspect(
+                    key=key,
+                    label=label,
+                    weight=float(weight),
+                    polarity=polarity,
+                    guidance=guidance,
+                    effective_from=effective_from,
+                )
             )
     if not aspects:
         raise SystemExit("Scoring aspects file must define at least one aspect")
     return aspects
+
+
+def applicable_scoring_aspects(
+    aspects: list[ScoringAspect], first_seen_at: str | None
+) -> list[ScoringAspect]:
+    try:
+        first_seen = (
+            datetime.fromisoformat(first_seen_at.replace("Z", "+00:00"))
+            if first_seen_at
+            else None
+        )
+    except ValueError:
+        first_seen = None
+    if first_seen is not None and first_seen.tzinfo is not None:
+        first_seen = first_seen.astimezone(timezone.utc)
+    else:
+        first_seen = None
+
+    return [
+        aspect
+        for aspect in aspects
+        if aspect.effective_from is None
+        or (first_seen is not None and first_seen >= aspect.effective_from)
+    ]
 
 
 def _build_score_response_format(aspects: list[ScoringAspect]) -> dict:
@@ -196,7 +257,12 @@ def score_papers(
     prompts: list[str] = []
     response_formats: list[dict] = []
     aspects_payload = [
-        {"key": aspect.key, "label": aspect.label, "polarity": aspect.polarity}
+        {
+            "key": aspect.key,
+            "label": aspect.label,
+            "polarity": aspect.polarity,
+            "guidance": aspect.guidance,
+        }
         for aspect in aspects
     ]
 

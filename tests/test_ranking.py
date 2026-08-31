@@ -1,7 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from ir_arxiv_ranker.models import Paper
-from ir_arxiv_ranker.ranking import ScoringAspect, rank_from_scores, score_papers
+from ir_arxiv_ranker.paper_state import needs_scoring_score
+from ir_arxiv_ranker.ranking import (
+    ScoringAspect,
+    aggregate_score,
+    applicable_scoring_aspects,
+    load_scoring_aspects,
+    rank_from_scores,
+    score_papers,
+)
 
 
 def _paper(paper_id: str, title: str) -> Paper:
@@ -77,3 +87,86 @@ def test_rank_from_scores_orders_without_llm_call():
 
     assert rankings.final_ranking == ["P2"]
     assert rankings.scores_by_id["P1"] == {"legal_domain": 1}
+
+
+def test_forward_only_aspect_is_not_applied_to_legacy_record(tmp_path):
+    path = tmp_path / "scoring_aspects.yaml"
+    path.write_text(
+        """
+positive:
+  legal_domain:
+    label: legal domain
+    weight: 1
+  agentic_search_or_deep_research:
+    label: agentic search / deep research
+    guidance: Score retrieval-only work as 0.
+    weight: 1
+    effective_from: "2026-08-31T20:31:40Z"
+"""
+    )
+
+    aspects = load_scoring_aspects(path)
+    legacy_aspects = applicable_scoring_aspects(aspects, "2026-08-31T20:00:00Z")
+    future_aspects = applicable_scoring_aspects(aspects, "2026-08-31T21:00:00Z")
+    legacy_record = {
+        "scoring_scores": {"legal_domain": 2},
+        "scoring_total_score": 2.0,
+        "scoring_input_hash": "same",
+        "scoring_scored_input_hash": "same",
+    }
+
+    assert [aspect.key for aspect in legacy_aspects] == ["legal_domain"]
+    assert [aspect.key for aspect in future_aspects] == [
+        "legal_domain",
+        "agentic_search_or_deep_research",
+    ]
+    assert not needs_scoring_score(
+        legacy_record, [aspect.key for aspect in legacy_aspects]
+    )
+    assert aggregate_score(legacy_record["scoring_scores"], aspects) == 2.0
+
+
+def test_forward_only_aspect_is_still_required_for_new_llm_scores(monkeypatch):
+    captured = {}
+    aspects = [
+        ScoringAspect("legal_domain", "legal domain", 1.0, "positive"),
+        ScoringAspect(
+            "agentic_search_or_deep_research",
+            "agentic search / deep research",
+            1.0,
+            "positive",
+            guidance="Score retrieval-only work as 0.",
+            effective_from=datetime(2026, 8, 31, 20, 31, 40, tzinfo=timezone.utc),
+        ),
+    ]
+
+    def fake_batch_call_llm_json(**kwargs):
+        captured.update(kwargs)
+        return [
+            {
+                "id": "P1",
+                "scores": {
+                    "legal_domain": 0,
+                    "agentic_search_or_deep_research": 2,
+                },
+            }
+        ]
+
+    monkeypatch.setattr("ir_arxiv_ranker.ranking.batch_call_llm_json", fake_batch_call_llm_json)
+
+    rankings = score_papers(
+        client=object(),
+        model="test-model",
+        scoring_prompt_template=(
+            "{% for aspect in aspects %}{{ aspect.key }}: {{ aspect.guidance }}{% endfor %}"
+        ),
+        papers=[_paper("P1", "Agentic search")],
+        top_n=1,
+        aspects=aspects,
+    )
+
+    score_schema = captured["response_formats"][0]["schema"]["properties"]["scores"]
+    assert "agentic_search_or_deep_research" in score_schema["required"]
+    assert "Score retrieval-only work as 0." in captured["prompts"][0]
+    assert rankings.scores_by_id["P1"]["agentic_search_or_deep_research"] == 2
+    assert rankings.total_score_by_id["P1"] == 2.0

@@ -41,7 +41,13 @@ from .paper_state import (
 )
 from .selected_summary import generate_selected_summaries_batch, load_selected_summary_prompt
 from .tts import batch_synthesize_podcast
-from .ranking import aggregate_score, load_scoring_aspects, rank_from_scores, score_papers
+from .ranking import (
+    aggregate_score,
+    applicable_scoring_aspects,
+    load_scoring_aspects,
+    rank_from_scores,
+    score_papers,
+)
 
 
 MAX_LIMIT = 50
@@ -648,47 +654,58 @@ def main() -> None:
             author_influence_by_id[paper.paper_id] = score
     top_n_for_bucket = min(top_n, len(papers))
 
-    aspect_keys = [aspect.key for aspect in scoring_aspects]
-    scoring_items = [
-        (paper, record)
-        for paper, record in zip(papers, candidate_records)
-        if run_fetch_score and needs_scoring_score(record, aspect_keys)
-    ]
+    scoring_items = []
+    for paper, record in zip(papers, candidate_records):
+        applicable_aspects = applicable_scoring_aspects(
+            scoring_aspects, record.get("first_seen_at")
+        )
+        if run_fetch_score and needs_scoring_score(
+            record, [aspect.key for aspect in applicable_aspects]
+        ):
+            scoring_items.append((paper, applicable_aspects))
     if scoring_items:
-        scoring_papers = [paper for paper, _ in scoring_items]
-        scoring_paper_id_to_base_id = {
-            paper.paper_id: paper_id_to_base_id[paper.paper_id]
-            for paper in scoring_papers
-        }
-        scoring_author_influence_by_id = {
-            paper.paper_id: author_influence_by_id[paper.paper_id]
-            for paper in scoring_papers
-            if paper.paper_id in author_influence_by_id
-        }
-        print(f"Scoring {len(scoring_papers)} new or changed pooled paper(s) with LLM...")
-        scoring_rankings = score_papers(
-            client=scoring_client,
-            model=scoring_model,
-            scoring_prompt_template=scoring_prompt_template,
-            papers=scoring_papers,
-            top_n=len(scoring_papers),
-            author_influence_by_id=scoring_author_influence_by_id,
-            abstract_word_cutoff=abst_word_cutoff,
-            pricing=scoring_pricing,
-            cost_tracker=cost_tracker,
-            cost_report=cost_report,
-            openai_timeout=openai_timeout,
-            provider=scoring_provider,
-            include_keyword_papers=include_keyword_papers,
-            aspects=scoring_aspects,
-            max_workers=scoring_max_workers,
-        )
-        set_scoring_scores(
-            paper_state,
-            paper_id_to_base_id=scoring_paper_id_to_base_id,
-            scores_by_id=scoring_rankings.scores_by_id,
-            total_score_by_id=scoring_rankings.total_score_by_id,
-        )
+        scoring_groups: dict[tuple[str, ...], tuple[list, list]] = {}
+        for paper, applicable_aspects in scoring_items:
+            aspect_key = tuple(aspect.key for aspect in applicable_aspects)
+            group_papers, group_aspects = scoring_groups.setdefault(
+                aspect_key, ([], applicable_aspects)
+            )
+            group_papers.append(paper)
+
+        print(f"Scoring {len(scoring_items)} new or changed pooled paper(s) with LLM...")
+        for scoring_papers, group_aspects in scoring_groups.values():
+            scoring_paper_id_to_base_id = {
+                paper.paper_id: paper_id_to_base_id[paper.paper_id]
+                for paper in scoring_papers
+            }
+            scoring_author_influence_by_id = {
+                paper.paper_id: author_influence_by_id[paper.paper_id]
+                for paper in scoring_papers
+                if paper.paper_id in author_influence_by_id
+            }
+            scoring_rankings = score_papers(
+                client=scoring_client,
+                model=scoring_model,
+                scoring_prompt_template=scoring_prompt_template,
+                papers=scoring_papers,
+                top_n=len(scoring_papers),
+                author_influence_by_id=scoring_author_influence_by_id,
+                abstract_word_cutoff=abst_word_cutoff,
+                pricing=scoring_pricing,
+                cost_tracker=cost_tracker,
+                cost_report=cost_report,
+                openai_timeout=openai_timeout,
+                provider=scoring_provider,
+                include_keyword_papers=include_keyword_papers,
+                aspects=group_aspects,
+                max_workers=scoring_max_workers,
+            )
+            set_scoring_scores(
+                paper_state,
+                paper_id_to_base_id=scoring_paper_id_to_base_id,
+                scores_by_id=scoring_rankings.scores_by_id,
+                total_score_by_id=scoring_rankings.total_score_by_id,
+            )
     else:
         if run_fetch_score:
             print("No pooled papers need scoring; reusing existing scores.")

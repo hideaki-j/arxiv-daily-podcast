@@ -49,7 +49,7 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 Edit `my_config/config.yaml` to control the run:
 
 - `influence_filter`, `influence_score_threshold`: provider/model and minimum score for pool inclusion. Author-influence scores are `0`, `1`, `2`, `3`, `4`, or `8`, with `8` reserved for priority-author matches; keep the threshold at `3` to include scores `3`, `4`, and `8`. Papers below the threshold remain in state for deduplication but have `in_pool: false` and are not ranked, published, summarized, converted to audio, or used for images.
-- `scoring_aspects_path`, `scoring_max_workers`: separate YAML file for scoring aspect weights and the parallel worker count for per-paper scoring calls.
+- `scoring_aspects_path`, `scoring_max_workers`: separate YAML file for scoring aspect labels, detailed guidance, weights, and the parallel worker count. Set an aspect's `effective_from` timestamp to apply it only to papers first seen from that time onward; older records may safely omit the score.
 - `scoring`, `podcast`, `manga_planner`, `affiliation`: provider/model pairs for each LLM call family.
 - `manga_image`: OpenAI image generation settings for the selected-paper image attachment.
 - `top_n`, `top_n_tts`: how many pooled papers to include in ranking outputs and whether to generate audio for the selected paper.
