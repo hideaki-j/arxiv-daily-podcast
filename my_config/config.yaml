@@ -1,6 +1,6 @@
 # Feature flags
 email_enabled: true
-minimum_email_score: 9
+minimum_email_score: 7
 generate_transcript: true
 generate_manga_image: false
 filter_since_last_schedule: true

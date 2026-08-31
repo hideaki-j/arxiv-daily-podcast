@@ -58,20 +58,20 @@ def test_score_papers_scores_each_paper_and_orders_by_aggregate(monkeypatch):
         ),
         papers=[_paper("P1", "Survey"), _paper("P2", "Legal prompting")],
         top_n=2,
-        author_influence_by_id={"P1": 8, "P2": 0},
+        author_influence_by_id={"P1": 6, "P2": 0},
         aspects=aspects,
         max_workers=150,
     )
 
     assert len(captured["prompts"]) == 2
     assert captured["max_workers"] == 150
-    assert rankings.total_score_by_id == {"P1": 8.0, "P2": 4.0}
+    assert rankings.total_score_by_id == {"P1": 6.0, "P2": 4.0}
     assert rankings.final_ranking == ["P1", "P2"]
     assert rankings.scores_by_id["P1"] == {
         "survey": 2,
         "legal_domain": 0,
         "prompting": 1,
-        "author_influence_score": 8,
+        "author_influence_score": 6,
     }
     assert rankings.tldr_by_id == {}
 

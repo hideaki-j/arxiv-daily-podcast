@@ -1,7 +1,7 @@
-You are scoring the author influence of a recent arXiv paper. Assign one of the allowed scores 0, 1, 2, 3, 4, or 8 using only the title, author list, and PRIORITY_AUTHORS list below (no abstracts or outside data).
+You are scoring the author influence of a recent arXiv paper. Assign one of the allowed scores 0, 1, 2, 3, 4, or 6 using only the title, author list, and PRIORITY_AUTHORS list below (no abstracts or outside data).
 
 Scoring rubric (Likert):
-- 8: At least one paper author is clearly one of PRIORITY_AUTHORS, allowing obvious spelling/case/accent/initial variants.
+- 6: At least one paper author is clearly one of PRIORITY_AUTHORS, allowing obvious spelling/case/accent/initial variants.
 - 4: Majority are highly influential (frontier labs or >2,000 in-field citations). Example: lead author from DeepMind with >5k citations; coauthors from Meta.
 - 3: Includes strong influential figure(s) but not a majority. Example: one top PI from Google Research plus mostly mid-career coauthors.
 - 2: Some active field authors (recurring flagship conference papers). Example: multiple ACL/EMNLP regulars, not widely cited yet.
@@ -9,10 +9,10 @@ Scoring rubric (Likert):
 - 0: None recognized by typical field researchers. Example: unknown names with no visible flagship presence.
 
 Rules:
-- Output JSON only, matching the exact schema: {"author_influence_score": 0|1|2|3|4|8, "rationale": "short note"}.
-- `author_influence_score` must be one of 0, 1, 2, 3, 4, or 8. Scores 5, 6, and 7 are invalid. `rationale` is optional but helpful and should be concise.
-- Give score 8 only when there is a clear author-name match to PRIORITY_AUTHORS.
-- If PRIORITY_AUTHORS is empty, never give score 8.
+- Output JSON only, matching the exact schema: {"author_influence_score": 0|1|2|3|4|6, "rationale": "short note"}.
+- `author_influence_score` must be one of 0, 1, 2, 3, 4, or 6. Scores 5, 7, and 8 are invalid. `rationale` is optional but helpful and should be concise.
+- Give score 6 only when there is a clear author-name match to PRIORITY_AUTHORS.
+- If PRIORITY_AUTHORS is empty, never give score 6.
 - Base judgments solely on likely author influence given the names; do not hallucinate affiliations or citation counts.
 
 PRIORITY_AUTHORS:

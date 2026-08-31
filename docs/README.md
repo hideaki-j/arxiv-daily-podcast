@@ -81,7 +81,7 @@ Settings in `my_config/config.yaml`:
 | Setting | Current Value | Description |
 |---------|---------------|-------------|
 | `email_enabled` | `true` | Enable/disable email sending |
-| `minimum_email_score` | `9` | Minimum inclusive total score required for email publishing; a lower-scoring winner remains unsent and downstream generation is skipped |
+| `minimum_email_score` | `7` | Minimum inclusive total score required for email publishing; a lower-scoring winner remains unsent and downstream generation is skipped |
 | `generate_transcript` | `true` | Enable/disable transcript generation |
 | `generate_manga_image` | `true` | Enable/disable selected-paper image generation |
 | `filter_since_last_schedule` | `true` | Ignored in bucket mode; paper-state deduplication controls repeat notifications |
@@ -105,7 +105,7 @@ Settings in `my_config/config.yaml`:
 | `tts.voice` | `Zephyr` | Voice ID for TTS |
 | `affiliation.provider` | `gemini` | Provider for affiliation extraction |
 | `affiliation.model` | `gemini-3-flash-preview` | Model for affiliation extraction |
-| `influence_score_threshold` | `3` | Minimum author-influence score for pool inclusion; allowed scores are 0–4 and 8 (priority match), so this includes 3, 4, and 8 |
+| `influence_score_threshold` | `3` | Minimum author-influence score for pool inclusion; allowed scores are 0–4 and 6 (priority match), so this includes 3, 4, and 6 |
 | `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects, guidance, weights, and optional forward-only rollout via an `effective_from` timestamp |
 | `scoring_max_workers` | `150` | Parallel worker count for per-paper aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |

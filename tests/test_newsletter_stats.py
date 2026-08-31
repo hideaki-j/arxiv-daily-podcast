@@ -84,7 +84,7 @@ def test_cost_breakdown_rows_group_by_stage_and_model():
 
 
 def test_minimum_email_score_is_inclusive():
-    assert _meets_minimum_email_score(9.0, 9.0)
-    assert _meets_minimum_email_score(10.0, 9.0)
-    assert not _meets_minimum_email_score(8.99, 9.0)
-    assert not _meets_minimum_email_score(None, 9.0)
+    assert _meets_minimum_email_score(7.0, 7.0)
+    assert _meets_minimum_email_score(8.0, 7.0)
+    assert not _meets_minimum_email_score(6.99, 7.0)
+    assert not _meets_minimum_email_score(None, 7.0)

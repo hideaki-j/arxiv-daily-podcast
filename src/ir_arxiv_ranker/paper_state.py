@@ -13,8 +13,8 @@ from .models import Paper
 SCHEMA_VERSION = 1
 SENT_STATUS = "sent"
 POOLED_STATUS = "pooled"
-LEGACY_PRIORITY_INFLUENCE_SCORE = 5
-PRIORITY_INFLUENCE_SCORE = 8
+LEGACY_PRIORITY_INFLUENCE_SCORES = frozenset({5, 8})
+PRIORITY_INFLUENCE_SCORE = 6
 
 
 def _legacy_value(record: dict, key: str, legacy_key: str, default=None):
@@ -84,7 +84,7 @@ def _normalize_scoring_fields(record: dict) -> dict:
         elif key not in normalized and default is not None:
             normalized[key] = default
 
-    if normalized.get("influence_score") == LEGACY_PRIORITY_INFLUENCE_SCORE:
+    if normalized.get("influence_score") in LEGACY_PRIORITY_INFLUENCE_SCORES:
         normalized["influence_score"] = PRIORITY_INFLUENCE_SCORE
 
     score_and_total_fields = (
@@ -95,7 +95,8 @@ def _normalize_scoring_fields(record: dict) -> dict:
         scores = normalized.get(scores_key)
         if not isinstance(scores, dict):
             continue
-        if scores.get("author_influence_score") != LEGACY_PRIORITY_INFLUENCE_SCORE:
+        previous_priority_score = scores.get("author_influence_score")
+        if previous_priority_score not in LEGACY_PRIORITY_INFLUENCE_SCORES:
             continue
         normalized[scores_key] = {
             **scores,
@@ -104,7 +105,7 @@ def _normalize_scoring_fields(record: dict) -> dict:
         total = normalized.get(total_key)
         if isinstance(total, (int, float)) and not isinstance(total, bool):
             normalized[total_key] = total + (
-                PRIORITY_INFLUENCE_SCORE - LEGACY_PRIORITY_INFLUENCE_SCORE
+                PRIORITY_INFLUENCE_SCORE - previous_priority_score
             )
     return normalized
 
