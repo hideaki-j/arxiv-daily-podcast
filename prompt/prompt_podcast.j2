@@ -7,11 +7,9 @@ Requirements (keep this order):
 3) A sentence that clearly states the problem the paper is trying to solve (in plain language). Exactly start with: "The problem is, however,  "
 4) A sentence that begins exactly: "For example, " and gives a simple real-world example that makes the problem clear.
 5) A sentence that includes a filler word (e.g., "So," or "Well,") and says "today we introduce {{ paper.title }}".
-6) Explicitly read every matched registered author's full name from the list below.
-  - Required names: {{ matched_authors | join(", ") if matched_authors else "No registered authors matched; mention the first author." }}
-  - Never omit a required name because another author is more famous or because of an author-count limit. Do not select authors based on fame.
-  - If other authors are omitted, say "and colleagues". Keep it concise.
-  - Do not mention affiliations, institutions, or whether affiliations are available.
+6) A short explanation about authors and affiliations based only on the paper text.
+  - You must select and mention only a few authors who are well-known; if none are well-known, use just the first and last author; never mention more than or equal to three authors. If you omit others, say \"and colleagues\" so listeners know it's abbreviated. Keep it concise.
+  - For affiliations, you may mention only a few well-known institutions; if none are notable or unclear, say \"affiliations are not clearly stated.\" If you omit other institutions, say "and others" to indicate it's abbreviated. Again, the same rule applies: never mention more than or equal to three institutions. Keep it brief.
 7) Explain why this paper is significant, with "So here's why this paper is a big deal. "
 8) Explain the paper simply and concisely. Exactly start with: "In a nutshell, with their words, the paper proposes "
 9) Explain the intuition behind the main idea. Begin that sentence exactly with: "The intuition behind this idea is "

@@ -32,9 +32,9 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 
 ## CLI stages
 
-- `--stage fetch-score`: fetches arXiv papers, merges them into `state/discovered_papers.json`, matches registered authors, marks matching records `in_pool: true`, scores their relevance, and saves the scored pool. When `require_priority_author_match` is off, the legacy LLM author-influence threshold controls inclusion.
-- `--stage rescore-pool`: re-evaluates stored unsent records that are missing required rubric scores, checkpointing every 100 papers without fetching or publishing. With `require_priority_author_match` enabled, only registered-author matches are scored; with it disabled, influence-excluded records are included too.
-- `--stage publish`: rechecks the entire stored history against the current author registry, preserves sent flags, and selects the highest-ranked unsent `in_pool: true` paper. When email is enabled, it stops without publishing if the total score is below `minimum_email_score`. Otherwise it generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
+- `--stage fetch-score`: fetches arXiv papers, merges them into `state/discovered_papers.json`, scores author influence, marks only papers with `in_pool: true` for the active author-influence threshold, extracts affiliations for those pool records, scores them, and saves the scored pool.
+- `--stage rescore-pool`: re-evaluates all stored unsent records—including influence-excluded records—that are missing required rubric scores, checkpointing every 100 papers without fetching, author-influence scoring, affiliation extraction, or publishing.
+- `--stage publish`: reads `state/discovered_papers.json` and selects the highest-ranked unsent `in_pool: true` paper. When email is enabled, it stops without publishing if the total score is below `minimum_email_score`. Otherwise it generates the selected-paper description, transcript/audio, manga image, newsletter HTML, sends email if enabled, and marks the selected paper as sent.
 - `--stage all`: runs both stages in one process. This is the default for local manual runs.
 
 ## Setup Daily Newsletter & Podcast with GitHub Actions
@@ -50,10 +50,9 @@ uv run -m ir_arxiv_ranker --config my_config/config.yaml --stage publish
 
 Edit `my_config/config.yaml` to control the run:
 
-- `require_priority_author_match`: enabled (`true`). Only papers with a full-name match in `PRIORITY_AUTHORS` enter the active pool or get published/emailed, regardless of cached influence scores. An empty or missing registry blocks all publication. Case, whitespace, accents, and punctuation are normalized; surname-only, initials-only, and substring matches do not qualify. Every run rechecks all history, including previously excluded and sent papers; sent papers are never resent. Matched names are bold in the newsletter and explicitly spoken in the podcast, with a deterministic fallback before TTS. Affiliations are omitted and no longer extracted.
-- `influence_filter`, `influence_score_threshold`: legacy provider/model and minimum score for pool inclusion when `require_priority_author_match` is disabled. Author-influence scores are `0`, `1`, `2`, `3`, `4`, or `6`, with `6` reserved for priority-author matches; keep the threshold at `3` to include scores `3`, `4`, and `6`. Papers below the threshold remain in state for deduplication but have `in_pool: false` and are not ranked, published, summarized, converted to audio, or used for images.
+- `influence_filter`, `influence_score_threshold`: provider/model and minimum score for pool inclusion. Author-influence scores are `0`, `1`, `2`, `3`, `4`, or `6`, with `6` reserved for priority-author matches; keep the threshold at `3` to include scores `3`, `4`, and `6`. Papers below the threshold remain in state for deduplication but have `in_pool: false` and are not ranked, published, summarized, converted to audio, or used for images.
 - `scoring_aspects_path`, `scoring_max_workers`: separate YAML file for scoring aspect labels, detailed guidance, weights, and the parallel worker count. Set an aspect's `effective_from` timestamp to apply it only to papers first seen from that time onward; older records may safely omit the score.
-- `scoring`, `podcast`, `manga_planner`: provider/model pairs for each LLM call family.
+- `scoring`, `podcast`, `manga_planner`, `affiliation`: provider/model pairs for each LLM call family.
 - `manga_image`: OpenAI image generation settings for the selected-paper image attachment.
 - `top_n`, `top_n_tts`: how many pooled papers to include in ranking outputs and whether to generate audio for the selected paper.
 - `generate_transcript`, `use_tts`: enable/disable transcripts and mp3 audio.
@@ -71,7 +70,7 @@ GMAIL_ADDRESS=...
 GMAIL_APP_PASSWORD=...
 OPENROUTER_API_KEY=...  # only when using OpenRouter
 GEMINI_API_KEY=...      # only when using Gemini
-PRIORITY_AUTHORS=...    # required for publication with author gate enabled; semicolon-delimited
+PRIORITY_AUTHORS=...    # optional; semicolon-delimited
 MANGA_STYLE_PROMPT=...   # optional; private image style hint
 ```
 
@@ -85,9 +84,10 @@ More details (full config list, pricing, outputs, structure) are in
 ```mermaid
 flowchart TD
   A["config.yaml<br>+ keywords.yaml<br>+ .env<br/>(__main__.py)"] --> B["Fetch arXiv papers<br/>cs.IR + cs.CL + keywords<br/>(arxiv_client.py)"]
-  B --> C["Registered-author matching<br/>(priority_authors.py)"]
+  B --> C["LLM author influence scoring<br/>(influence_filter.py)"]
   C --> D["Persistent paper state<br/>with in_pool + sent flags<br/>(paper_state.py)"]
-  D --> E["LLM per-paper aspect scoring<br/>+ aggregate ranking<br/>(ranking.py)"]
+  D --> A1["Affiliation extraction<br/>(affiliations.py)"]
+  A1 --> E["LLM per-paper aspect scoring<br/>+ aggregate ranking<br/>(ranking.py)"]
   E --> S1["Stored scored paper pool<br/>(paper_state.py)"]
   S1 --> P["Publish selected unsent paper<br/>(--stage publish)"]
   S1 --> F["Write rankings.csv + results.json<br/>(output.py)"]
@@ -116,11 +116,11 @@ The publish email shows four stored-pool statistics. These are computed only fro
 ## FAQ
 
 **Q. Can I use other LLMs?**
-- A. Yes. Swap the nested provider/model pairs such as `scoring.model`, `podcast.model`, `tts.model`, `manga_planner.model` in `my_config/config.yaml`, then keep `my_config/pricing.json` in sync. Set a provider to `openrouter` only when the relevant code path supports OpenRouter and `OPENROUTER_API_KEY` is configured.
+- A. Yes. Swap the nested provider/model pairs such as `scoring.model`, `podcast.model`, `tts.model`, `manga_planner.model`, and `affiliation.model` in `my_config/config.yaml`, then keep `my_config/pricing.json` in sync. Set a provider to `openrouter` only when the relevant code path supports OpenRouter and `OPENROUTER_API_KEY` is configured.
 
 
 **Q. How much does it cost to run?**
-- A. In general, ~$0.50 per run. Details: It depends on the models and how many papers/audio you generate (legacy author-influence scoring adds an extra LLM pass when the registered-author gate is off). Costs are tracked during a run and printed at the end; edit `my_config/pricing.json`, `top_n`, `top_n_tts`, and transcript/TTS flags to control spend.
+- A. In general, ~$0.50 per run. Details: It depends on the models and how many papers/audio you generate (author-influence scoring adds an extra LLM pass). Costs are tracked during a run and printed at the end; edit `my_config/pricing.json`, `top_n`, `top_n_tts`, and transcript/TTS flags to control spend.
 
 
 **Q. Can I customize the keywords/retrieval/domain?**

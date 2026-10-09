@@ -55,7 +55,6 @@ class Settings:
     filter_since_last_schedule: bool
     use_tts: bool
     email_enabled: bool
-    require_priority_author_match: bool
     minimum_email_score: float | None
     arxiv_timeout: int
     openai_timeout: int
@@ -162,7 +161,6 @@ def load_config(config_path: Path) -> Settings:
     include_keyword_papers = raw_config.get("include_keyword_papers", True)
     compress_to_64kbps = raw_config.get("compress_to_64kbps", True)
     email_enabled = raw_config.get("email_enabled", False)
-    require_priority_author_match = raw_config.get("require_priority_author_match", True)
     minimum_email_score = raw_config.get("minimum_email_score")
     pricing_path = raw_config.get("pricing_path")
     arxiv_timeout = raw_config.get("arxiv_timeout")
@@ -179,8 +177,6 @@ def load_config(config_path: Path) -> Settings:
         raise SystemExit("filter_since_last_schedule must be a boolean")
     if not isinstance(email_enabled, bool):
         raise SystemExit("email_enabled must be a boolean")
-    if not isinstance(require_priority_author_match, bool):
-        raise SystemExit("require_priority_author_match must be a boolean")
     if not isinstance(generate_transcript, bool):
         raise SystemExit("generate_transcript must be a boolean")
     if not isinstance(compress_to_64kbps, bool):
@@ -303,7 +299,6 @@ def load_config(config_path: Path) -> Settings:
         filter_since_last_schedule=filter_since_last_schedule,
         use_tts=use_tts,
         email_enabled=email_enabled,
-        require_priority_author_match=require_priority_author_match,
         minimum_email_score=(
             float(minimum_email_score) if minimum_email_score is not None else None
         ),

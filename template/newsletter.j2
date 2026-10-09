@@ -63,7 +63,8 @@
                       <a href="{{ item.arxiv_url }}" style="color:#0f766e; text-decoration:none;">{{ item.title }}</a>
                     </h1>
                     <div style="font-size:13px; line-height:20px; color:#4b5563;">
-                      <div><strong>Authors:</strong> {% for author in item.author_names %}{% if author.matched %}<strong>{{ author.name }}</strong>{% else %}{{ author.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+                      <div><strong>Authors:</strong> {{ item.authors }}</div>
+                      <div><strong>Affiliations:</strong> {{ item.affiliations }}</div>
                       {% if item.published_line %}
                       <div><strong>Published:</strong> {{ item.published_line }}</div>
                       {% endif %}

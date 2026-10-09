@@ -7,22 +7,22 @@ The pipeline has two explicit stages:
 1. **Fetch and score** (`--stage fetch-score`)
    - Fetches papers from arXiv (`cs.IR`, `cs.CL`, and optional keyword-matched papers) sorted by last updated date.
    - Merges discovered papers into `state/discovered_papers.json`.
-   - Matches full author names against `PRIORITY_AUTHORS` and rechecks the entire stored history.
-   - Pools only matching papers when `require_priority_author_match` is enabled (the default).
+   - Scores new papers for author influence when `PRIORITY_AUTHORS` is configured.
+   - Extracts affiliations for new or changed papers.
    - Scores unsent pooled papers on configurable ranking aspects and stores aggregate scores.
 2. **Publish** (`--stage publish`)
    - Reads the stored paper pool from `state/discovered_papers.json`.
-   - Rechecks registered authors and selects the highest-ranked matching unsent paper. An empty registry blocks publication.
+   - Selects the highest-ranked unsent paper.
    - Downloads the selected PDF.
    - Generates a selected-paper description for the newsletter.
    - Optionally generates a manga-style image.
-   - Optionally generates podcast transcripts and TTS audio, explicitly reading every matched registered author. Affiliations are omitted.
+   - Optionally generates podcast transcripts and TTS audio.
    - Sends email with HTML newsletter and attachments when email is enabled.
    - Marks the selected paper as sent only after email succeeds.
 
 `--stage all` runs both stages in one process and is the default for local manual runs.
 
-Cost note: the enabled registered-author gate uses deterministic name matching. Legacy author-influence LLM scoring runs only when that gate is disabled.
+Cost note: author-influence scoring adds an extra LLM call; ensure your `pricing.json` includes the chosen `influence_filter.model`.
 
 Each run creates a timestamped directory under `data/YYMMDD-HHMMSS/` with:
 - `rankings.csv` and `results.json` - ranking results with TL;DRs and `author_influence_threshold`
@@ -32,14 +32,14 @@ Each run creates a timestamped directory under `data/YYMMDD-HHMMSS/` with:
 - `manga/` - generated selected-paper image, when enabled
 - `newsletter/` - HTML newsletter
 
-Fetch-only runs save scored state. Publish runs create the newsletter artifacts, with matching author names in bold.
+Fetch-only runs may create a run directory only when affiliation PDF downloads are needed. Publish runs create the newsletter artifacts.
 
 ## Email statistics
 
 The publish email includes four statistics computed from the current unsent
 stored pool before the selected paper is marked sent. The stored pool means
-records with `in_pool: true`; papers without a registered-author match
-(or below the legacy influence threshold when the author gate is off) are retained only for deduplication/history and are not ranked,
+records with `in_pool: true`; papers below the configured author-influence
+threshold are retained only for deduplication/history and are not ranked,
 published, summarized, converted to audio, or used for images.
 
 | Label | Definition |
@@ -71,8 +71,7 @@ The automation is intentionally split into two workflow files:
 
 Both workflows use the same `paper-state` concurrency group so state commits do not overlap. The app code is checked out from `master`; the persistent paper state is checked out from the `paper-state` branch.
 Manual runs of the fetch-score workflow can select `rescore-pool` to update missing
-rubric scores across matching unsent stored records. With the author gate disabled,
-this includes influence-excluded records.
+rubric scores across all unsent stored records, including influence-excluded records.
 Results are checkpointed every 100 papers before the workflow commits the state branch.
 
 ## Configuration
@@ -82,7 +81,6 @@ Settings in `my_config/config.yaml`:
 | Setting | Current Value | Description |
 |---------|---------------|-------------|
 | `email_enabled` | `true` | Enable/disable email sending |
-| `require_priority_author_match` | `true` | Require a deterministic full-name match in `PRIORITY_AUTHORS` for pool inclusion and publication; recheck all history each run; an empty registry blocks publication |
 | `minimum_email_score` | `7` | Minimum inclusive total score required for email publishing; a lower-scoring winner remains unsent and downstream generation is skipped |
 | `generate_transcript` | `true` | Enable/disable transcript generation |
 | `generate_manga_image` | `true` | Enable/disable selected-paper image generation |
@@ -105,7 +103,9 @@ Settings in `my_config/config.yaml`:
 | `tts.provider` | `gemini` | Provider for audio synthesis |
 | `tts.model` | `gemini-2.5-flash-preview-tts` | Model for audio synthesis |
 | `tts.voice` | `Zephyr` | Voice ID for TTS |
-| `influence_score_threshold` | `3` | Legacy minimum author-influence score for pool inclusion when the author gate is disabled; allowed scores are 0–4 and 6 (priority match), so this includes 3, 4, and 6 |
+| `affiliation.provider` | `gemini` | Provider for affiliation extraction |
+| `affiliation.model` | `gemini-3-flash-preview` | Model for affiliation extraction |
+| `influence_score_threshold` | `3` | Minimum author-influence score for pool inclusion; allowed scores are 0–4 and 6 (priority match), so this includes 3, 4, and 6 |
 | `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects, guidance, weights, and optional forward-only rollout via an `effective_from` timestamp |
 | `scoring_max_workers` | `150` | Parallel worker count for per-paper aspect scoring |
 | `influence_max_workers` | _unset_ | Optional parallel worker count for influence scoring (default 150) |
@@ -181,13 +181,11 @@ Required only when the matching provider is enabled:
 - `OPENROUTER_API_KEY`
 - `GEMINI_API_KEY` or `GOOGLE_API_KEY`
 
-Required for publication when `require_priority_author_match` is enabled:
-- `PRIORITY_AUTHORS` - semicolon-delimited canonical full author names. Matching normalizes case, accents, whitespace, and punctuation, but does not accept surname-only, initials-only, or substring matches.
-
 Optional:
+- `PRIORITY_AUTHORS` - semicolon-delimited canonical author names.
 - `MANGA_STYLE_PROMPT` - private style hint for image planning and generation.
 
-In GitHub Actions, the same values should be stored as repository Actions secrets. The fetch-score workflow only writes API/provider secrets needed for scoring/enrichment. Both workflows load `PRIORITY_AUTHORS`; the publish workflow also writes Gmail secrets because it can send email.
+In GitHub Actions, the same values should be stored as repository Actions secrets. The fetch-score workflow only writes API/provider secrets needed for scoring/enrichment. The publish workflow also writes Gmail secrets because it can send email.
 
 ## Project Structure
 
@@ -202,8 +200,7 @@ src/ir_arxiv_ranker/
   tts.py             # Text-to-speech synthesis
   manga_image.py     # Selected-paper image planning and generation
   influence_filter.py # Author influence scoring
-  priority_authors.py # Registered-author name matching
-  affiliations.py    # Legacy affiliation extraction helpers (not used by the pipeline)
+  affiliations.py    # Author affiliation extraction
   emailer.py         # Gmail SMTP sending
   output.py          # File I/O (CSV, JSON, downloads)
   models.py          # Data models (Paper, Rankings)
