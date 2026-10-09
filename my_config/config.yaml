@@ -1,5 +1,6 @@
 # Feature flags
 email_enabled: true
+require_priority_author_match: true
 minimum_email_score: 7
 generate_transcript: true
 generate_manga_image: false

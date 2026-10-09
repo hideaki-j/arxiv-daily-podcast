@@ -10,6 +10,7 @@ from utils.costs import CostReport, CostTracker
 from utils.naming import build_file_stem
 
 from .models import Paper
+from .priority_authors import matched_priority_authors, normalize_author_name
 
 
 def load_podcast_prompt(path: Path) -> str:
@@ -35,13 +36,34 @@ def _truncate_words(text: str, limit: int | None) -> str:
     return " ".join(words[:limit])
 
 
-def _render_prompt(prompt_template: str, paper: Paper, paper_text: str, model: str) -> str:
+def _render_prompt(
+    prompt_template: str, paper: Paper, paper_text: str, model: str,
+    priority_authors: list[str] | None = None,
+) -> str:
     env = Environment(autoescape=False, undefined=StrictUndefined)
     return env.from_string(prompt_template).render(
         paper=paper,
         paper_text=paper_text,
         model=model,
+        matched_authors=matched_priority_authors(paper.authors, priority_authors or []),
     )
+
+
+def _ensure_required_authors(transcript: str, paper: Paper, priority_authors: list[str]) -> str:
+    """Guarantee required full names reach TTS even if the LLM omits them."""
+    normalized = f" {normalize_author_name(transcript)} "
+    missing = [
+        name for name in matched_priority_authors(paper.authors, priority_authors)
+        if f" {normalize_author_name(name)} " not in normalized
+    ]
+    if not missing:
+        return transcript
+    credit = "This paper is by " + ", ".join(missing) + " and colleagues."
+    # Keep the required opening greeting at the beginning of the transcript.
+    greeting = "Welcome back to the Automatic Evaluation podcast. Thanks for tuning in."
+    if transcript.startswith(greeting):
+        return greeting + " " + credit + " " + transcript[len(greeting):].lstrip()
+    return credit + " " + transcript
 
 
 def generate_transcript(
@@ -57,10 +79,11 @@ def generate_transcript(
     label: str = "Podcast LLM",
     openai_timeout: int | None = None,
     provider: str = "openai",
+    priority_authors: list[str] | None = None,
 ) -> str:
     paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
-    prompt = _render_prompt(prompt_template, paper, paper_text, model)
-    return call_llm_text(
+    prompt = _render_prompt(prompt_template, paper, paper_text, model, priority_authors)
+    transcript = call_llm_text(
         client=client,
         model=model,
         prompt=prompt,
@@ -71,6 +94,7 @@ def generate_transcript(
         timeout=openai_timeout,
         provider=provider,
     )
+    return _ensure_required_authors(transcript, paper, priority_authors or [])
 
 
 def generate_transcripts_batch(
@@ -87,14 +111,15 @@ def generate_transcripts_batch(
     openai_timeout: int | None = None,
     max_workers: int = 4,
     provider: str = "openai",
+    priority_authors: list[str] | None = None,
 ) -> list[str]:
     prompts: list[str] = []
     for paper, pdf_path in zip(papers, pdf_paths):
         paper_text = _truncate_words(_extract_pdf_text(pdf_path), word_cutoff)
-        prompt = _render_prompt(prompt_template, paper, paper_text, model)
+        prompt = _render_prompt(prompt_template, paper, paper_text, model, priority_authors)
         prompts.append(prompt)
 
-    return batch_call_llm_text(
+    transcripts = batch_call_llm_text(
         client=client,
         model=model,
         prompts=prompts,
@@ -106,6 +131,10 @@ def generate_transcripts_batch(
         max_workers=max_workers,
         provider=provider,
     )
+    return [
+        _ensure_required_authors(transcript, paper, priority_authors or [])
+        for paper, transcript in zip(papers, transcripts)
+    ]
 
 
 def write_transcript(transcript_dir: Path, paper: Paper, rank: int, transcript: str) -> Path:

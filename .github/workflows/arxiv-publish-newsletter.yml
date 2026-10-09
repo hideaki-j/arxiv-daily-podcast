@@ -44,6 +44,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PRIORITY_AUTHORS: ${{ secrets.PRIORITY_AUTHORS }}
           MANGA_STYLE_PROMPT: ${{ secrets.MANGA_STYLE_PROMPT }}
           CHARACTER_TEACHER: ${{ secrets.CHARACTER_TEACHER }}
           CHARACTER_STUDENT: ${{ secrets.CHARACTER_STUDENT }}
@@ -58,6 +59,7 @@ jobs:
               "GMAIL_APP_PASSWORD",
               "OPENROUTER_API_KEY",
               "GEMINI_API_KEY",
+              "PRIORITY_AUTHORS",
               "MANGA_STYLE_PROMPT",
               "CHARACTER_TEACHER",
               "CHARACTER_STUDENT",

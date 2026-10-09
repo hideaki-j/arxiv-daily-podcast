@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import Paper
+from .priority_authors import matched_priority_authors
 
 
 SCHEMA_VERSION = 1
@@ -328,6 +329,38 @@ def pooled_records(
         )
 
     return sorted(records, key=sort_key, reverse=True)
+
+
+def refresh_priority_author_gate(
+    state: dict,
+    priority_authors: list[str],
+    require_match: bool = True,
+    influence_threshold: int = 3,
+) -> None:
+    """Recheck all history against the current registry, preserving sent flags."""
+    for record in _record_bucket(state).values():
+        matches = matched_priority_authors(record.get("authors", []), priority_authors)
+        record["priority_author_matches"] = matches
+        record["priority_author_gate_passed"] = bool(matches)
+        if matches:
+            record["influence_score"] = PRIORITY_INFLUENCE_SCORE
+            for scores_key, total_key in (
+                ("scoring_scores", "scoring_total_score"),
+                ("ranking_scores", "ranking_total_score"),
+            ):
+                scores = record.get(scores_key)
+                if not isinstance(scores, dict) or not scores:
+                    continue
+                previous = scores.get("author_influence_score", 0)
+                scores["author_influence_score"] = PRIORITY_INFLUENCE_SCORE
+                total = record.get(total_key)
+                if isinstance(total, (int, float)) and isinstance(previous, (int, float)):
+                    record[total_key] = total + PRIORITY_INFLUENCE_SCORE - previous
+        score = record.get("influence_score")
+        record["in_pool"] = (
+            bool(matches) if require_match
+            else score is None or score >= influence_threshold
+        )
 
 
 def records_to_papers(records: Iterable[dict]) -> tuple[list[Paper], dict[str, str]]:
