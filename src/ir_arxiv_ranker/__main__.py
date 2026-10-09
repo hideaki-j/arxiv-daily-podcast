@@ -12,11 +12,11 @@ from jinja2 import Environment, StrictUndefined
 from openai import OpenAI
 
 from utils.costs import CostReport, CostTracker
-from .affiliations import extract_affiliations_batch
 from .arxiv_client import fetch_keyword_papers, fetch_recent_papers
 from .config import load_config
 from .influence_filter import filter_by_author_influence
 from .emailer import send_email
+from .priority_authors import author_display_names, matched_priority_authors
 from .manga_image import generate_manga_image, generate_manga_instruction, load_manga_prompt
 from .output import (
     create_run_dir,
@@ -36,7 +36,7 @@ from .paper_state import (
     records_to_papers,
     save_paper_state,
     set_scoring_scores,
-    set_affiliations,
+    refresh_priority_author_gate,
     utc_now_iso,
 )
 from .selected_summary import generate_selected_summaries_batch, load_selected_summary_prompt
@@ -64,7 +64,6 @@ DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
 DEFAULT_STATE_PATH = Path("state") / "discovered_papers.json"
 SELECTED_SUMMARY_MODEL = "gemini-3.1-pro-preview"
 SELECTED_SUMMARY_PROVIDER = "gemini"
-AFFILIATION_TOKEN_LIMIT = 200
 SCORING_BATCH_SIZE = 100
 
 
@@ -371,6 +370,17 @@ def main() -> None:
     settings = load_config(args.config)
     cost_tracker = CostTracker()
     cost_report = CostReport()
+    priority_authors = _priority_authors()
+    state_path = _state_path()
+    paper_state = load_paper_state(state_path)
+    refresh_priority_author_gate(
+        paper_state, priority_authors, settings.require_priority_author_match,
+        settings.influence_score_threshold,
+    )
+    save_paper_state(state_path, paper_state)
+    if run_publish and not run_fetch_score and not pooled_records(paper_state):
+        print("No eligible unsent papers match the active gates; skipping publication and email.")
+        return
 
     scoring_model = settings.scoring.model
     scoring_provider = settings.scoring.provider
@@ -385,7 +395,6 @@ def main() -> None:
     manga_image_output_format = settings.manga_image.output_format if settings.manga_image else None
     manga_image_char_cutoff = settings.manga_image.char_cutoff if settings.manga_image else None
     influence_filter_model = settings.influence_filter.model
-    affiliation_model = settings.affiliation.model
     ir_limit = settings.ir_limit
     nlp_limit = settings.nlp_limit
     others_limit = settings.others_limit
@@ -421,7 +430,6 @@ def main() -> None:
     manga_image_pricing = pricing_data.get(manga_image_model, {}) or {} if manga_image_model else {}
     tts_pricing = pricing_data.get(tts_model, {}) or {} if tts_model else {}
     influence_pricing = pricing_data.get(influence_filter_model, {}) or {}
-    affiliation_pricing = pricing_data.get(affiliation_model, {}) or {}
 
     if email_enabled and run_publish:
         gmail_address = os.getenv("GMAIL_ADDRESS")
@@ -515,12 +523,10 @@ def main() -> None:
     openai_client = OpenAI()
     gemini_client = None
     influence_provider = settings.influence_filter.provider
-    affiliation_provider = settings.affiliation.provider
 
     needs_gemini = (
         scoring_provider == "gemini"
         or (run_fetch_score and influence_provider == "gemini")
-        or (run_fetch_score and affiliation_provider == "gemini")
         or (run_publish and SELECTED_SUMMARY_PROVIDER == "gemini")
         or (run_publish and podcast_provider == "gemini")
         or (run_publish and manga_planner_provider == "gemini")
@@ -533,15 +539,12 @@ def main() -> None:
 
     influence_client = gemini_client if influence_provider == "gemini" else openai_client
     scoring_client = gemini_client if scoring_provider == "gemini" else openai_client
-    affiliation_client = gemini_client if affiliation_provider == "gemini" else openai_client
     selected_summary_client = gemini_client if SELECTED_SUMMARY_PROVIDER == "gemini" else openai_client
     podcast_client = gemini_client if podcast_provider == "gemini" else openai_client
     manga_planner_client = gemini_client if manga_planner_provider == "gemini" else openai_client
     manga_style_prompt = _manga_style_prompt()
     manga_characters_list = _manga_characters_list()
 
-    state_path = _state_path()
-    paper_state = load_paper_state(state_path)
     run_dir = None
     papers_dir = None
     transcript_dir = None
@@ -563,9 +566,18 @@ def main() -> None:
             if base_arxiv_id(paper.arxiv_id) not in existing_base_ids
         ]
         new_pool_count = len(new_papers)
-        priority_authors = _priority_authors()
         influence_scores_by_id: dict[str, int] = {}
-        if priority_authors and new_papers:
+        if settings.require_priority_author_match:
+            influence_scores_by_id = {
+                paper.paper_id: 6 if matched_priority_authors(paper.authors, priority_authors) else 0
+                for paper in new_papers
+            }
+            author_influence_passed_count = sum(score == 6 for score in influence_scores_by_id.values())
+            influence_gate_note = (
+                f"Registered-author matching checked {new_pool_count} new/{fetched_count} "
+                f"fetched papers and found {author_influence_passed_count} matches."
+            )
+        elif priority_authors and new_papers:
             influence_result = filter_by_author_influence(
                 client=influence_client,
                 model=influence_filter_model,
@@ -599,59 +611,28 @@ def main() -> None:
             )
 
         seen_at = utc_now_iso()
-        changed_pooled_base_ids = merge_discovered_papers(
+        merge_discovered_papers(
             paper_state,
             papers,
             scores_by_id=influence_scores_by_id,
             seen_at=seen_at,
             influence_threshold=influence_score_threshold,
         )
-        save_paper_state(state_path, paper_state)
-
-        if changed_pooled_base_ids:
-            run_dir, papers_dir, transcript_dir, podcast_dir, newsletter_dir = create_run_dir()
-            papers_by_base_id = {base_arxiv_id(paper.arxiv_id): paper for paper in papers}
-            affiliation_papers = [
-                papers_by_base_id[base_id]
-                for base_id in changed_pooled_base_ids
-                if base_id in papers_by_base_id
-                and paper_state["pooled_papers"].get(base_id, {}).get("in_pool", True)
-            ]
-            if affiliation_papers:
-                print(f"Extracting affiliations for {len(affiliation_papers)} bucket paper(s)...")
-                affiliation_pdf_paths = download_papers(
-                    papers_dir,
-                    affiliation_papers,
-                    [paper.paper_id for paper in affiliation_papers],
-                )
-                affiliations_by_paper_id = extract_affiliations_batch(
-                    client=affiliation_client,
-                    model=affiliation_model,
-                    papers=affiliation_papers,
-                    pdf_paths=affiliation_pdf_paths,
-                    pricing=affiliation_pricing,
-                    cost_tracker=cost_tracker,
-                    cost_report=cost_report,
-                    token_limit=AFFILIATION_TOKEN_LIMIT,
-                    openai_timeout=openai_timeout,
-                    max_workers=min(4, len(affiliation_papers)),
-                    provider=affiliation_provider,
-                )
-                set_affiliations(
-                    paper_state,
-                    {
-                        base_arxiv_id(paper.arxiv_id): affiliations_by_paper_id.get(
-                            paper.paper_id, "Not specified"
-                        )
-                        for paper in affiliation_papers
-                    },
-                )
+        refresh_priority_author_gate(
+            paper_state, priority_authors, settings.require_priority_author_match,
+            influence_score_threshold,
+        )
         save_paper_state(state_path, paper_state)
         print(f"Saved paper bucket state to {state_path}")
     candidate_records = pooled_records(
         paper_state,
         include_out_of_pool=args.stage == "rescore-pool",
     )
+    if settings.require_priority_author_match:
+        candidate_records = [
+            record for record in candidate_records
+            if matched_priority_authors(record.get("authors", []), priority_authors)
+        ]
     if not candidate_records:
         print("No pooled papers available; skipping ranking and email.")
         if run_dir is not None:
@@ -942,6 +923,7 @@ def main() -> None:
                 openai_timeout=openai_timeout,
                 max_workers=min(4, len(transcript_papers)),
                 provider=podcast_provider,
+                priority_authors=priority_authors,
             )
             for rank, (paper, transcript) in enumerate(
                 zip(transcript_papers, transcripts), start=1
@@ -1030,9 +1012,11 @@ def main() -> None:
                 ("Proposed method", selected_summary.get("proposed_method", "")),
                 ("Results", selected_summary.get("results", "")),
             ]
-            state_record = paper_state["pooled_papers"].get(paper_id_to_base_id[paper_id], {})
-            affiliations = state_record.get("affiliations") or "Not specified"
-            authors = ", ".join(paper.authors)
+            author_names = author_display_names(paper.authors, priority_authors)
+            authors = ", ".join(
+                f"**{author['name']}**" if author["matched"] else author["name"]
+                for author in author_names
+            )
             version = _extract_version(paper.arxiv_id)
             published_date = _date_only(paper.published)
             updated_date = _date_only(paper.updated)
@@ -1042,7 +1026,6 @@ def main() -> None:
 
             lines.append(f"{rank}. {paper.title} ({paper.paper_id})")
             lines.append(f"Authors: {authors}")
-            lines.append(f"Affiliations: {affiliations}")
             if published_line:
                 lines.append(f"Published: {published_line}")
             for section_label, section_text in summary_sections:
@@ -1094,7 +1077,7 @@ def main() -> None:
                     "title": paper.title,
                     "arxiv_url": f"https://arxiv.org/abs/{paper.arxiv_id}",
                     "authors": authors,
-                    "affiliations": affiliations,
+                    "author_names": author_names,
                     "published_line": published_line,
                     "summary_sections": [
                         {"label": section_label, "text": section_text}
@@ -1131,6 +1114,11 @@ def main() -> None:
             )
             if not attachments:
                 attachments = None
+        if settings.require_priority_author_match and not all(
+            matched_priority_authors(papers_by_id[paper_id].authors, priority_authors)
+            for paper_id in winner_ids
+        ):
+            raise RuntimeError("Email blocked: selected paper has no registered-author match")
         send_email(
             smtp_user=gmail_address,
             smtp_password=gmail_password,
