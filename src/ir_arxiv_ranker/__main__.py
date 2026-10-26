@@ -62,8 +62,8 @@ DEFAULT_SELECTED_SUMMARY_PROMPT_PATH = Path("prompt") / "prompt_selected_summary
 DEFAULT_INFLUENCE_PROMPT_PATH = Path("prompt") / "prompt_influence_filter.j2"
 DEFAULT_TTS_INSTRUCTIONS_PATH = Path("prompt") / "tts_instructions.txt"
 DEFAULT_STATE_PATH = Path("state") / "discovered_papers.json"
-SELECTED_SUMMARY_MODEL = "gpt-6-luna"
-SELECTED_SUMMARY_PROVIDER = "openai"
+SELECTED_SUMMARY_MODEL = "gemini-3.1-pro-preview"
+SELECTED_SUMMARY_PROVIDER = "gemini"
 SCORING_BATCH_SIZE = 100
 
 
@@ -528,8 +528,8 @@ def main() -> None:
         scoring_provider == "gemini"
         or (run_fetch_score and influence_provider == "gemini")
         or (run_publish and SELECTED_SUMMARY_PROVIDER == "gemini")
-        or (run_publish and generate_transcript_flag and podcast_provider == "gemini")
-        or (run_publish and generate_manga_image_flag and manga_planner_provider == "gemini")
+        or (run_publish and podcast_provider == "gemini")
+        or (run_publish and manga_planner_provider == "gemini")
     )
     if needs_gemini:
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")

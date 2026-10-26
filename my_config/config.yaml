@@ -2,28 +2,28 @@
 email_enabled: true
 require_priority_author_match: true
 minimum_email_score: 7
-generate_transcript: false
+generate_transcript: true
 generate_manga_image: false
 filter_since_last_schedule: true
-use_tts: false
+use_tts: true
 include_keyword_papers: false
 
 # LLM Call Configurations
 influence_filter:
-  provider: openai
-  model: gpt-6-luna
+  provider: gemini
+  model: gemini-3.7-flash
 
 scoring:
-  provider: openai
-  model: gpt-6-luna
+  provider: gemini
+  model: gemini-3.7-flash
 
 podcast:
-  provider: openai
-  model: gpt-6-luna
+  provider: gemini
+  model: gemini-3.1-pro-preview
 
 manga_planner:
-  provider: openai
-  model: gpt-6-luna
+  provider: gemini
+  model: gemini-3.1-pro-preview
 
 manga_image:
   provider: openai
@@ -33,9 +33,14 @@ manga_image:
   output_format: png
   char_cutoff: 30000
 
+tts:
+  provider: gemini
+  model: gemini-2.5-flash-preview-tts
+  voice: Zephyr
+
 affiliation:
-  provider: openai
-  model: gpt-6-luna
+  provider: gemini
+  model: gemini-3-flash-preview
 
 # Other settings
 compress_to_64kbps: true
@@ -45,7 +50,7 @@ nlp_limit: 50
 others_limit: 50
 keywords_path: my_config/keywords.yaml
 top_n: 3
-top_n_tts: 0
+top_n_tts: 3
 abst_word_cutoff: 200
 transcript_word_cutoff: 1000
 arxiv_timeout: 30

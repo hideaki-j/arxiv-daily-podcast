@@ -77,8 +77,6 @@ Results are checkpointed every 100 papers before the workflow commits the state 
 
 ## Configuration
 
-The current setup sends email only using OpenAI `gpt-6-luna` for criteria scoring and selected-paper summaries. Podcast transcripts, audio, and images are disabled; no Gemini API calls are needed. Existing stored scores are reused.
-
 Settings in `my_config/config.yaml`:
 
 | Setting | Current Value | Description |
@@ -86,27 +84,27 @@ Settings in `my_config/config.yaml`:
 | `email_enabled` | `true` | Enable/disable email sending |
 | `require_priority_author_match` | `true` | Require a deterministic full-name match in `PRIORITY_AUTHORS` for pool inclusion and publication; recheck all history each run; an empty registry blocks publication |
 | `minimum_email_score` | `7` | Minimum inclusive total score required for email publishing; a lower-scoring winner remains unsent and downstream generation is skipped |
-| `generate_transcript` | `false` | Enable/disable transcript generation |
-| `generate_manga_image` | `false` | Enable/disable selected-paper image generation |
+| `generate_transcript` | `true` | Enable/disable transcript generation |
+| `generate_manga_image` | `true` | Enable/disable selected-paper image generation |
 | `filter_since_last_schedule` | `true` | Ignored in bucket mode; paper-state deduplication controls repeat notifications |
-| `use_tts` | `false` | Enable/disable audio synthesis |
-| `influence_filter.provider` | `openai` | Provider for author-influence scoring |
-| `influence_filter.model` | `gpt-6-luna` | Model for author-influence scoring |
-| `scoring.provider` | `openai` | Provider for per-paper scoring |
-| `scoring.model` | `gpt-6-luna` | Model for paper scoring |
-| `podcast.provider` | `openai` | Provider for transcript generation |
-| `podcast.model` | `gpt-6-luna` | Model for transcript generation |
-| `manga_planner.provider` | `openai` | Provider for selected-paper image planning |
-| `manga_planner.model` | `gpt-6-luna` | Model for selected-paper image planning |
+| `use_tts` | `true` | Enable/disable audio synthesis |
+| `influence_filter.provider` | `gemini` | Provider for author-influence scoring |
+| `influence_filter.model` | `gemini-3.7-flash` | Model for author-influence scoring |
+| `scoring.provider` | `gemini` | Provider for per-paper scoring |
+| `scoring.model` | `gemini-3.7-flash` | Model for paper scoring |
+| `podcast.provider` | `gemini` | Provider for transcript generation |
+| `podcast.model` | `gemini-3.1-pro-preview` | Model for transcript generation |
+| `manga_planner.provider` | `gemini` | Provider for selected-paper image planning |
+| `manga_planner.model` | `gemini-3.1-pro-preview` | Model for selected-paper image planning |
 | `manga_image.provider` | `openai` | Provider for image generation; must be `openai` |
 | `manga_image.model` | `gpt-image-2` | Model for image generation |
 | `manga_image.size` | `1024x1536` | Generated portrait smartphone-oriented image size |
 | `manga_image.quality` | `high` | Generated image quality |
 | `manga_image.output_format` | `png` | Generated image format |
 | `manga_image.char_cutoff` | `30000` | Max selected-paper text characters for image planning |
-| `tts.provider` | _unset_ | Provider for audio synthesis |
-| `tts.model` | _unset_ | Model for audio synthesis |
-| `tts.voice` | _unset_ | Voice ID for TTS |
+| `tts.provider` | `gemini` | Provider for audio synthesis |
+| `tts.model` | `gemini-2.5-flash-preview-tts` | Model for audio synthesis |
+| `tts.voice` | `Zephyr` | Voice ID for TTS |
 | `influence_score_threshold` | `3` | Legacy minimum author-influence score for pool inclusion when the author gate is disabled; allowed scores are 0–4 and 6 (priority match), so this includes 3, 4, and 6 |
 | `scoring_aspects_path` | `my_config/scoring_aspects.yaml` | Separate YAML file with positive/negative scoring aspects, guidance, weights, and optional forward-only rollout via an `effective_from` timestamp |
 | `scoring_max_workers` | `150` | Parallel worker count for per-paper aspect scoring |
@@ -119,7 +117,7 @@ Settings in `my_config/config.yaml`:
 | `include_keyword_papers` | `false` | Include keyword-matched papers (set to `false` for IR/CL only mode) |
 | `keywords_path` | `my_config/keywords.yaml` | Path to keywords YAML |
 | `top_n` | `3` | Number of pooled papers to include in ranking outputs |
-| `top_n_tts` | `0` | Enables transcript/audio generation for the selected paper when greater than 0 (must be <= `top_n`) |
+| `top_n_tts` | `3` | Enables transcript/audio generation for the selected paper when greater than 0 (must be <= `top_n`) |
 | `abst_word_cutoff` | `200` | Max abstract words in ranking prompt |
 | `transcript_word_cutoff` | `1000` | Max words from PDF for transcript prompt |
 | `arxiv_timeout` | `30` | arXiv request timeout in seconds |
