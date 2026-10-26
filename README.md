@@ -2,6 +2,8 @@
 
 Daily arXiv newsletter and podcast for automatic evaluation research. The automation is split into two stages: one action fetches and scores papers into a persistent pool, and a second action reads that stored pool to generate the newsletter, transcript/audio, image, and email.
 
+The current configuration sends email only: all text LLM calls use OpenAI `gpt-6-luna`, including criteria scoring, legacy author-influence scoring, and selected-paper summaries. Podcast transcripts, audio, and images are disabled. `OPENAI_API_KEY` and Gmail credentials are required; Gemini credits are not used. Existing stored scores are reused until a paper needs scoring.
+
 ## Vibe Code Alert
 
 This project was 99% vibe coded as a fun Saturday hack because I wanted to explore the usefulness of receiving an LLM-based, daily podcast-style summary of recent arXiv papers in my field, especially given the tsunami of academic papers being published every day. (Yes, I follow Andrej's [practice](https://github.com/karpathy/llm-council).)

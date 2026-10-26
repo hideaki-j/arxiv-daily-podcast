@@ -1,4 +1,10 @@
 {
+  "gpt-6-luna": {
+    "provider": "openai",
+    "input_usd_per_1m_tokens": 0.1,
+    "cached_input_usd_per_1m_tokens": 0.01,
+    "output_usd_per_1m_tokens": 0.5
+  },
   "gpt-5.5": {
     "provider": "openai",
     "input_usd_per_1m_tokens": 5.0,
