@@ -1,5 +1,4 @@
 from argparse import Namespace
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -77,29 +76,47 @@ def test_publish_selects_matching_paper_over_higher_scoring_outsider(tmp_path, m
         "outsider": record("Famous Unregistered", score=6, legal_score=100, base_id="outsider"),
         "target": record("Akari Asai", score=1, base_id="target"),
     }})
-    settings = replace(load_config(Path("my_config/config.yaml")),
-                       generate_transcript=False, use_tts=False)
+    settings = load_config(Path("my_config/config.yaml"))
     monkeypatch.setenv("PRIORITY_AUTHORS", "Akari Asai")
     monkeypatch.setenv("PAPER_STATE_PATH", str(state_path))
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("GMAIL_ADDRESS", "test@example.com")
     monkeypatch.setenv("GMAIL_APP_PASSWORD", "test")
     monkeypatch.setattr(pipeline, "load_dotenv", lambda: None)
     monkeypatch.setattr(pipeline, "load_config", lambda _: settings)
     monkeypatch.setattr(pipeline, "_parse_args", lambda: Namespace(
         stage="publish", config=Path("my_config/config.yaml")))
-    monkeypatch.setattr(pipeline, "OpenAI", lambda: object())
-    monkeypatch.setattr(pipeline.genai, "Client", lambda **kwargs: object())
+    openai_client = object()
+    monkeypatch.setattr(pipeline, "OpenAI", lambda: openai_client)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Email-only publishing must not use Gemini, transcripts, audio, or images")
+
+    monkeypatch.setattr(pipeline.genai, "Client", forbidden)
+    for name in ["generate_transcripts_batch", "batch_synthesize_podcast", "generate_manga_instruction", "generate_manga_image"]:
+        monkeypatch.setattr(pipeline, name, forbidden)
     directories = [tmp_path / name for name in ["run", "pdf", "transcripts", "audio", "newsletter"]]
     for directory in directories:
         directory.mkdir()
     monkeypatch.setattr(pipeline, "create_run_dir", lambda: tuple(directories))
     monkeypatch.setattr(pipeline, "download_papers", lambda *args: [tmp_path / "paper.pdf"])
-    monkeypatch.setattr(pipeline, "generate_selected_summaries_batch", lambda **kwargs: {})
+    summary_calls = []
+
+    def generate_summary(**kwargs):
+        summary_calls.append(kwargs)
+        return {}
+
+    monkeypatch.setattr(pipeline, "generate_selected_summaries_batch", generate_summary)
     sent = []
     monkeypatch.setattr(pipeline, "send_email", lambda **kwargs: sent.append(kwargs))
     pipeline.main()
+    assert len(summary_calls) == 1
+    assert summary_calls[0]["client"] is openai_client
+    assert summary_calls[0]["provider"] == "openai"
+    assert summary_calls[0]["model"] == "gpt-6-luna"
     assert len(sent) == 1
+    assert sent[0]["attachments"] is None
     assert "<strong>Akari Asai</strong>, Other Author" in sent[0]["html_body"]
     assert "Famous Unregistered" not in sent[0]["body"]
     assert "**Akari Asai**" in sent[0]["body"]
